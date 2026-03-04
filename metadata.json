@@ -1,0 +1,9 @@
+{
+  "name": "Ilé - Modern Real Estate",
+  "description": "A mobile-first real estate platform for Nigeria connecting buyers, renters, and agents with residential, commercial, and event spaces.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera",
+    "geolocation"
+  ]
+}
