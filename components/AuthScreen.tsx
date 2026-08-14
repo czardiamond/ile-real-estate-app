@@ -49,7 +49,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             await sendEmailNotification(
                 identifier,
                 "Verify your Agent Identity",
-                `Welcome to Ilé! Please click here to verify your email address: https://ile.ng/verify/${user.id}`
+                `Welcome to Gemini! Please click here to verify your email address: https://gemini.ng/verify/${user.id}`
             );
             setVerificationSentTo(identifier);
             setPendingUser(user);
@@ -109,10 +109,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
         
         {/* LOGO SECTION */}
         <div className="flex flex-col items-center justify-center mb-8 pt-4">
-             <div className="w-20 h-20 bg-primary-container rounded-[24px] flex items-center justify-center mb-4 shadow-sm">
+             <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 shadow-md border border-outline-variant/30">
                  <Logo size={40} />
              </div>
-            <h1 className="text-4xl font-normal text-on-surface tracking-tight mb-1">Ilé</h1>
+            <h1 className="text-4xl font-medium text-on-surface tracking-tight mb-1">Gemini</h1>
             <p className="text-sm font-medium text-on-surface-variant tracking-widest uppercase">Find Your Space</p>
         </div>
         

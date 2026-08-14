@@ -260,6 +260,34 @@ export interface AcademyUnit {
     lessons: AcademyLesson[];
 }
 
+export interface DocumentVisionInspectionResult {
+  landCoordinates?: string;
+  plotNumber?: string;
+  titleNumber?: string;
+  issueDate?: string;
+  registeredOwner?: string;
+  grantingAuthority?: string;
+  documentTypeDetected?: string;
+  matchesSpecs?: boolean;
+  discrepancyDetails?: string;
+  verificationReadinessScore: number; // 0-100
+  status: 'HIGH_CONFIDENCE' | 'REGISTRY_CROSS_CHECK_REQUIRED' | 'DISCREPANCY_FLAGGED';
+  summaryNote: string;
+}
+
+export interface WhatsAppWebhookEvent {
+  id: string;
+  timestamp: string;
+  eventType: 'INCOMING_LEAD' | 'OFFER_SUBMITTED' | 'INSPECTION_REQUESTED' | 'AUTO_REPLY_SENT';
+  senderPhone: string;
+  senderName: string;
+  propertyTitle?: string;
+  incomingText: string;
+  aiAutoReply?: string;
+  leadIntentScore?: number;
+  status: 'RECEIVED' | 'PROCESSED' | 'SYNCED_FIRESTORE';
+}
+
 export interface Term {
     id: string;
     term: string;

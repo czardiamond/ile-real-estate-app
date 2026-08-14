@@ -3,21 +3,22 @@ import React, { useState, useEffect } from 'react';
 import { MOCK_LEADS, MOCK_PROPERTIES, MOCK_REVIEWS } from '../services/mockData';
 import { Lead, LeadStatus, User, VerificationStatus, Property, ListingStatus, Review } from '../types';
 import { BarChart, Bar, LineChart, Line, CartesianGrid, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Phone, MessageCircle, MoreVertical, BrainCircuit, Coffee, Sun, ShieldAlert, ArrowRight, ShieldCheck, Home, Edit, Archive, MapPin, CheckCircle, AlertTriangle, Loader2, Sparkles, TrendingUp, Star, StarHalf, MessageSquare, Users, Plus, GraduationCap, ChevronDown, Bell, Zap, X, BadgeCheck, Lightbulb, Share2 } from 'lucide-react';
+import { Phone, MessageCircle, MoreVertical, BrainCircuit, Coffee, Sun, ShieldAlert, ArrowRight, ShieldCheck, Home, Edit, Archive, MapPin, CheckCircle, AlertTriangle, Loader2, Sparkles, TrendingUp, Star, StarHalf, MessageSquare, Users, Plus, ChevronDown, Bell, Zap, X, BadgeCheck, Share2, FileEdit, Video } from 'lucide-react';
 import { analyzeLeadPotential, generateMarketingTip } from '../services/geminiService';
 import MarketingKitModal from './MarketingKitModal';
+import { BuyerIntentModal } from './BuyerIntentModal';
 import { sendEmailNotification } from '../services/notificationService';
 
 interface AgentDashboardProps {
     user: User;
     onVerifyClick: () => void;
     onTabChange: (tab: string) => void;
-    onOpenAcademy: () => void;
     onQuickAdd: (text: string) => void;
+    onOpenIleWalkthrough?: () => void;
 }
 
-const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, onTabChange, onOpenAcademy, onQuickAdd }) => {
-  const [activeTab, setActiveTab] = useState<'guests' | 'analytics' | 'listings' | 'reviews'>('guests');
+const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, onTabChange, onQuickAdd, onOpenIleWalkthrough }) => {
+  const [activeTab, setActiveTab] = useState<'leads' | 'analytics' | 'listings' | 'reviews'>('leads');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [myListings, setMyListings] = useState<Property[]>([]);
   const [myReviews, setMyReviews] = useState<Review[]>([]);
@@ -36,6 +37,113 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
   // Marketing Kit State
   const [marketingKitProperty, setMarketingKitProperty] = useState<Property | null>(null);
 
+  // Buyer Intent Analysis Modal State
+  const [selectedLeadForIntent, setSelectedLeadForIntent] = useState<Lead | null>(null);
+
+  // Activity Log & Toast State
+  const [activities, setActivities] = useState<Array<{
+    id: string;
+    leadName: string;
+    type: 'CALL' | 'WHATSAPP';
+    timestamp: string;
+    details: string;
+  }>>([
+    {
+      id: 'init-1',
+      leadName: 'Chief Emeka Okafor',
+      type: 'CALL',
+      timestamp: '10:15 AM',
+      details: 'Followed up on Lekki Phase 1 duplex inspection inquiry'
+    },
+    {
+      id: 'init-2',
+      leadName: 'Amina Bello',
+      type: 'WHATSAPP',
+      timestamp: '08:45 AM',
+      details: 'Shared video tour link for Victoria Island penthouse'
+    }
+  ]);
+  const [activityToast, setActivityToast] = useState<string | null>(null);
+
+  const handleCallLead = (lead: Lead) => {
+    const newAct = {
+      id: Date.now().toString(),
+      leadName: lead.name,
+      type: 'CALL' as const,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      details: `Placed direct phone call to ${lead.phone}`
+    };
+    setActivities(prev => [newAct, ...prev]);
+    setActivityToast(`Logged Phone Call activity for ${lead.name}`);
+    setTimeout(() => setActivityToast(null), 3500);
+    window.location.href = `tel:${lead.phone}`;
+  };
+
+  const handleWhatsAppLead = (lead: Lead) => {
+    const cleanPhone = lead.phone.replace(/[^0-9]/g, '');
+    const newAct = {
+      id: Date.now().toString(),
+      leadName: lead.name,
+      type: 'WHATSAPP' as const,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      details: `Opened WhatsApp messaging with ${lead.name}`
+    };
+    setActivities(prev => [newAct, ...prev]);
+    setActivityToast(`Logged WhatsApp activity for ${lead.name}`);
+    setTimeout(() => setActivityToast(null), 3500);
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(`Hello ${lead.name}, I am following up on your property inquiry on Gemini real estate platform.`)}`, '_blank');
+  };
+
+  const handleExportReport = () => {
+    const csvRows = [
+      ['=== GEMINI REAL ESTATE - AGENT PERFORMANCE REPORT ==='],
+      ['Agent Name', user.name],
+      ['Agency Name', user.agencyName || 'Independent Agent'],
+      ['Report Date', new Date().toLocaleString()],
+      ['Total Active Listings', myListings.length],
+      ['Total Portfolio Leads', leads.length],
+      [],
+      ['=== PORTFOLIO LISTINGS SUMMARY ==='],
+      ['Listing Title', 'Category', 'Price (NGN)', 'Status', 'Location'],
+      ...myListings.map(p => [
+        `"${p.title.replace(/"/g, '""')}"`,
+        p.category,
+        p.price,
+        p.status,
+        `"${p.location.area}, ${p.location.state}"`
+      ]),
+      [],
+      ['=== ACTIVE LEADS DATA ==='],
+      ['Lead Name', 'Email', 'Phone', 'Status', 'Est. Value (NGN)', 'Notes'],
+      ...leads.map(l => [
+        `"${l.name}"`,
+        l.email,
+        l.phone,
+        l.status,
+        l.value || 0,
+        `"${(l.notes || '').replace(/"/g, '""')}"`
+      ]),
+      [],
+      ['=== ACTIVITY AUDIT LOG ==='],
+      ['Timestamp', 'Lead Name', 'Action Type', 'Details'],
+      ...activities.map(a => [
+        a.timestamp,
+        `"${a.leadName}"`,
+        a.type,
+        `"${a.details}"`
+      ])
+    ];
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map(e => e.join(',')).join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Gemini_Agent_Report_${user.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   useEffect(() => {
       // Load Properties
       const agentProperties = MOCK_PROPERTIES.filter(p => p.agentId === user.id);
@@ -49,14 +157,6 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
       // Load Reviews
       const reviews = MOCK_REVIEWS.filter(r => r.agentId === user.id);
       setMyReviews(reviews);
-
-      // Load Marketing Tip
-      const loadTip = async () => {
-          const tip = await generateMarketingTip();
-          setMarketingTip(tip);
-      };
-      loadTip();
-
   }, [user.id]);
 
   const handleStatusUpdate = async (leadId: string, newStatus: LeadStatus) => {
@@ -169,60 +269,12 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
 
   const renderContent = () => {
       switch(activeTab) {
-          case 'guests':
+          case 'leads':
               return (
                 <div className="space-y-4">
-                    <div className="grid md:grid-cols-2 gap-4">
-                        {/* Academy Card */}
-                        <div 
-                            onClick={onOpenAcademy}
-                            className="bg-gradient-to-r from-purple-700 to-indigo-800 rounded-[28px] p-6 text-white relative overflow-hidden cursor-pointer hover:scale-[1.01] transition-transform shadow-lg group"
-                        >
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-xl"></div>
-                            <div className="flex justify-between items-center relative z-10">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <GraduationCap className="text-yellow-300" size={24} />
-                                        <span className="font-bold text-purple-100 uppercase tracking-wider text-xs">Ilé Academy</span>
-                                    </div>
-                                    <h3 className="text-2xl font-bold mb-1">Level Up Your Skills</h3>
-                                    <p className="text-purple-200 text-sm">3 daily lessons available.</p>
-                                </div>
-                                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center group-hover:bg-white/30 transition-colors">
-                                    <ArrowRight size={24} />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Marketing Tip Card */}
-                        <div className="bg-orange-50 border border-orange-100 p-6 rounded-[28px] flex items-start gap-4 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-orange-100 rounded-full -mr-8 -mt-8 opacity-50"></div>
-                            <div className="relative z-10 flex gap-4 w-full">
-                                <div className="bg-white p-3 rounded-xl shadow-sm text-orange-500 shrink-0 h-fit">
-                                    <Lightbulb size={24} fill="currentColor" className="text-orange-500" />
-                                </div>
-                                <div className="flex-1">
-                                    <h4 className="font-bold text-orange-900 text-xs uppercase tracking-wide mb-2 flex items-center gap-2">
-                                        Ilé Tip of the Day <Sparkles size={12} />
-                                    </h4>
-                                    {marketingTip ? (
-                                        <p className="text-orange-900 text-sm font-medium leading-relaxed italic">
-                                            "{marketingTip}"
-                                        </p>
-                                    ) : (
-                                        <div className="space-y-2 animate-pulse">
-                                            <div className="h-3 bg-orange-200 rounded w-3/4"></div>
-                                            <div className="h-3 bg-orange-200 rounded w-1/2"></div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div className="flex justify-between items-center px-2 mt-6">
-                        <h3 className="font-normal text-xl text-on-surface">Waiting on the Veranda</h3>
-                        <button className="text-sm text-primary font-bold bg-primary-container text-on-primary-container px-4 py-2 rounded-full hover:shadow-sm transition-all">+ Invite</button>
+                        <h3 className="font-normal text-xl text-on-surface">Active Portfolio Leads</h3>
+                        <button className="text-sm text-primary font-bold bg-primary-container text-on-primary-container px-4 py-2 rounded-full hover:shadow-sm transition-all">+ Invite Client</button>
                     </div>
                     
                     {leads.length === 0 ? (
@@ -279,6 +331,14 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                                         "{lead.notes}"
                                     </div>
 
+                                    <button
+                                        onClick={() => setSelectedLeadForIntent(lead)}
+                                        className="mb-4 w-full py-2.5 px-3 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-bold text-xs border border-purple-500/20 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Sparkles size={15} className="text-purple-600 dark:text-purple-400 animate-pulse" />
+                                        <span>AI Chat Log & Buyer Intent Score</span>
+                                    </button>
+
                                     {/* AI Analysis Section */}
                                     {analysis ? (
                                         <div className={`mb-4 p-4 rounded-xl text-xs flex gap-3 animate-in slide-in-from-top-2 duration-300 ${
@@ -303,16 +363,22 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                                             ) : (
                                                 <BrainCircuit size={16} /> 
                                             )}
-                                            {loadingAnalysis === lead.id ? 'Analyzing with Ilé...' : 'Ask Ilé for Advice'}
+                                            {loadingAnalysis === lead.id ? 'Analyzing with Ilé...' : 'Analyze with Ilé'}
                                         </button>
                                     )}
 
                                     <div className="flex gap-2 border-t border-outline-variant/20 pt-4">
-                                        <button className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-primary text-white hover:bg-primary/90 transition-colors shadow-sm text-sm font-medium">
+                                        <button 
+                                            onClick={() => handleCallLead(lead)}
+                                            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-primary text-white hover:bg-primary/90 transition-colors shadow-sm text-sm font-medium"
+                                        >
                                             <Phone size={18} /> Call
                                         </button>
-                                        <button className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-surface text-on-surface border border-outline-variant hover:bg-surface-container-high transition-colors text-sm font-medium">
-                                            <MessageCircle size={18} /> Chat
+                                        <button 
+                                            onClick={() => handleWhatsAppLead(lead)}
+                                            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-emerald-700 text-white hover:bg-emerald-800 transition-colors text-sm font-medium shadow-sm"
+                                        >
+                                            <MessageCircle size={18} /> WhatsApp
                                         </button>
                                     </div>
                                 </div>
@@ -320,6 +386,40 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                         })}
                     </div>
                     )}
+
+                    {/* Activity Audit Log Feed */}
+                    <div className="mt-8 bg-surface-container-low p-6 rounded-[28px] border border-outline-variant/10">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
+                                    <Bell size={16} />
+                                </div>
+                                <h4 className="font-bold text-base text-on-surface">Lead Communication Activity Log</h4>
+                            </div>
+                            <span className="text-xs text-on-surface-variant font-medium bg-surface-container px-3 py-1 rounded-full">
+                                {activities.length} Events Logged
+                            </span>
+                        </div>
+
+                        <div className="space-y-3">
+                            {activities.map((act) => (
+                                <div key={act.id} className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-gray-100 shadow-sm text-xs">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-xl text-white ${act.type === 'CALL' ? 'bg-blue-600' : 'bg-emerald-600'}`}>
+                                            {act.type === 'CALL' ? <Phone size={14} /> : <MessageCircle size={14} />}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-gray-900">{act.details}</p>
+                                            <p className="text-[10px] text-gray-400">Lead: <span className="font-medium text-gray-600">{act.leadName}</span></p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2.5 py-1 rounded-md border border-gray-200">
+                                        {act.timestamp}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </div>
               );
           case 'analytics':
@@ -384,30 +484,44 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
           case 'listings':
               return (
                   <div className="space-y-4">
-                      <div className="flex justify-between items-center px-2">
+                      <div className="flex justify-between items-center px-2 flex-wrap gap-2">
                           <h3 className="font-normal text-xl text-on-surface">My Listings</h3>
-                          <div className="flex gap-2">
-                             <span className="text-xs font-bold text-on-surface-variant bg-surface-container px-3 py-1 rounded-full flex items-center">{myListings.length} Active</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                             <span className="text-xs font-bold text-on-surface-variant bg-surface-container px-3 py-1.5 rounded-full flex items-center">{myListings.length} Active</span>
+                             <button 
+                                onClick={() => onTabChange('add-listing-ai')}
+                                className="px-3.5 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all"
+                             >
+                                <Sparkles size={14} /> AI Wizard
+                             </button>
+                             <button 
+                                onClick={() => onTabChange('add-listing-manual')}
+                                className="px-3.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all"
+                             >
+                                <FileEdit size={14} className="text-emerald-700" /> Create Manual Listing
+                             </button>
                              <button 
                                 onClick={() => setIsQuickAddOpen(true)}
-                                className="bg-surface-container-high text-on-surface-variant p-1.5 rounded-full hover:bg-surface-container hover:text-primary transition-colors border border-transparent hover:border-primary/20"
+                                className="bg-surface-container-high text-on-surface-variant p-2 rounded-xl hover:bg-surface-container hover:text-primary transition-colors border border-transparent hover:border-primary/20"
                                 title="Quick Add"
                              >
                                 <Zap size={16} fill="currentColor" />
                              </button>
-                             <button onClick={() => onTabChange('add-listing')} className="bg-primary text-white p-1 rounded-full hover:bg-primary/90"><Plus size={16} /></button>
                           </div>
                       </div>
                       
                       {myListings.length === 0 ? (
                         <div className="text-center py-16 bg-surface-container-low rounded-[28px] border border-dashed border-outline-variant/30">
                              <Home size={32} className="mx-auto mb-3 text-on-surface-variant/50" />
-                             <p className="text-on-surface-variant mb-4">You haven't listed any properties yet.</p>
-                             <div className="flex gap-2 justify-center">
-                                 <button onClick={() => onTabChange('add-listing')} className="px-6 py-2 bg-primary text-white rounded-full text-sm font-bold shadow-sm hover:shadow-md transition-all">
-                                    Add First Property
+                             <p className="text-on-surface-variant mb-4 font-medium">You haven't listed any properties yet.</p>
+                             <div className="flex flex-wrap gap-2.5 justify-center">
+                                 <button onClick={() => onTabChange('add-listing-ai')} className="px-5 py-2.5 bg-emerald-800 text-white rounded-2xl text-xs font-bold shadow-sm hover:bg-emerald-900 transition-all flex items-center gap-2">
+                                    <Sparkles size={15} /> AI Listing Wizard
                                  </button>
-                                 <button onClick={() => setIsQuickAddOpen(true)} className="px-6 py-2 bg-surface text-primary border border-primary/20 rounded-full text-sm font-bold hover:bg-primary/5 transition-all flex items-center gap-2">
+                                 <button onClick={() => onTabChange('add-listing-manual')} className="px-5 py-2.5 bg-white text-gray-800 border border-gray-300 rounded-2xl text-xs font-bold hover:bg-gray-50 transition-all flex items-center gap-2">
+                                    <FileEdit size={15} className="text-emerald-700" /> Create Manual Listing
+                                 </button>
+                                 <button onClick={() => setIsQuickAddOpen(true)} className="px-4 py-2.5 bg-surface text-primary border border-primary/20 rounded-2xl text-xs font-bold hover:bg-primary/5 transition-all flex items-center gap-2">
                                     <Zap size={14} /> Quick Add
                                  </button>
                              </div>
@@ -519,6 +633,14 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
 
   return (
     <div className="px-4 md:px-8 pb-24 max-w-7xl mx-auto">
+        {/* Activity Toast Alert */}
+        {activityToast && (
+          <div className="fixed top-20 right-4 z-50 bg-emerald-800 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-600 animate-in fade-in slide-in-from-top duration-300">
+             <CheckCircle size={20} className="text-emerald-300 flex-shrink-0" />
+             <span className="text-xs font-bold">{activityToast}</span>
+          </div>
+        )}
+
         {/* Dashboard Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 pt-4">
             <div>
@@ -587,23 +709,39 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                 )}
             </div>
             
-            {/* Quick Stats */}
-            <div className="flex gap-3 mt-4 md:mt-0 w-full md:w-auto overflow-x-auto no-scrollbar">
-                 <div className="bg-surface-container px-5 py-3 rounded-2xl min-w-[130px] flex-shrink-0">
+            {/* Quick Stats & Export Action */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-4 md:mt-0 w-full md:w-auto overflow-x-auto no-scrollbar">
+                 {onOpenIleWalkthrough && (
+                   <button 
+                     onClick={onOpenIleWalkthrough}
+                     className="bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white px-5 py-3 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs shadow-md hover:shadow-lg transition-all flex-shrink-0 cursor-pointer"
+                     title="Synthesize 60-second AI Video Walkthrough for your agency"
+                   >
+                      <Video size={16} className="text-emerald-200" /> Ilé 60s Video Studio
+                   </button>
+                 )}
+                 <button 
+                   onClick={handleExportReport}
+                   className="bg-emerald-800 hover:bg-emerald-900 text-white px-5 py-3 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs shadow-md transition-all flex-shrink-0"
+                   title="Export CSV Performance Report"
+                 >
+                    <Share2 size={16} /> Export Report (CSV)
+                 </button>
+                 <div className="bg-surface-container px-5 py-3 rounded-2xl min-w-[120px] flex-shrink-0">
                     <p className="text-xs text-on-surface-variant font-medium mb-1">Total Leads</p>
                     <div className="flex items-end gap-2">
                         <p className="text-2xl font-bold text-on-surface">{leads.length}</p>
                         <Users size={16} className="text-on-surface-variant mb-1.5 opacity-50" />
                     </div>
                  </div>
-                 <div className="bg-surface-container px-5 py-3 rounded-2xl min-w-[130px] flex-shrink-0">
+                 <div className="bg-surface-container px-5 py-3 rounded-2xl min-w-[120px] flex-shrink-0">
                     <p className="text-xs text-on-surface-variant font-medium mb-1">Active Listings</p>
                     <div className="flex items-end gap-2">
                         <p className="text-2xl font-bold text-on-surface">{myListings.length}</p>
                         <Home size={16} className="text-on-surface-variant mb-1.5 opacity-50" />
                     </div>
                  </div>
-                 <div className="bg-yellow-50 border border-yellow-100 px-5 py-3 rounded-2xl min-w-[130px] flex-shrink-0">
+                 <div className="bg-yellow-50 border border-yellow-100 px-5 py-3 rounded-2xl min-w-[120px] flex-shrink-0">
                     <p className="text-xs text-yellow-800 font-medium mb-1">Avg. Rating</p>
                     <div className="flex items-end gap-2">
                         <p className="text-2xl font-bold text-yellow-900">{averageRating}</p>
@@ -655,12 +793,12 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
         {/* Tab Switcher */}
         <div className="bg-surface-container-low p-1 rounded-2xl inline-flex flex-wrap mb-8 w-full md:w-auto">
             <button 
-                onClick={() => setActiveTab('guests')}
+                onClick={() => setActiveTab('leads')}
                 className={`flex-1 md:flex-none px-6 py-3 rounded-xl text-sm font-bold transition-all ${
-                    activeTab === 'guests' ? 'bg-surface shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
+                    activeTab === 'leads' ? 'bg-surface shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
                 }`}
             >
-                Guests
+                Leads
             </button>
             <button 
                 onClick={() => setActiveTab('analytics')}
@@ -756,6 +894,15 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
             <MarketingKitModal 
                 property={marketingKitProperty} 
                 onClose={() => setMarketingKitProperty(null)} 
+            />
+        )}
+
+        {/* AI Buyer Intent Score Modal */}
+        {selectedLeadForIntent && (
+            <BuyerIntentModal
+                lead={selectedLeadForIntent}
+                property={MOCK_PROPERTIES.find(p => p.id === selectedLeadForIntent.propertyId)}
+                onClose={() => setSelectedLeadForIntent(null)}
             />
         )}
     </div>

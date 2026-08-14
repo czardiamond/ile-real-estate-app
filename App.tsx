@@ -11,14 +11,24 @@ import LegalGenerator from './components/LegalGenerator';
 import ProfileSettingsView from './components/ProfileSettingsView';
 import ChatModal from './components/ChatModal';
 import LiveWalkthroughModal from './components/LiveWalkthroughModal';
-import NetworkMarketingView from './components/NetworkMarketingView';
 import BrokerageView from './components/BrokerageView';
-import AcademyView from './components/AcademyView';
 import SmartMeterWidget from './components/SmartMeterWidget';
 import RentPaymentModal from './components/RentPaymentModal';
 import PropertyCard from './components/PropertyCard';
+import MortgageCalculator from './components/MortgageCalculator';
+import GoogleInsights from './components/GoogleInsights';
+import { LandTitleVerificationModal } from './components/LandTitleVerificationModal';
+import { WhatsAppHubModal } from './components/WhatsAppHubModal';
+import { CommuteCalculator } from './components/CommuteCalculator';
+import { NeighborhoodPulse } from './components/NeighborhoodPulse';
+import { PropertyAlertsNotify } from './components/PropertyAlertsNotify';
+import { VirtualStagingModal } from './components/VirtualStagingModal';
+import { AcademyView } from './components/AcademyView';
+import { IleWalkthroughVideoModal } from './components/IleWalkthroughVideoModal';
+import { QATestingSuiteModal } from './components/QATestingSuiteModal';
+import { motion, AnimatePresence } from 'framer-motion';
 import { UserRole, Property, User, SmartListingResponse, VerificationData, FloodRisk, TitleDocument, VerificationStatus } from './types';
-import { X, Calendar, MessageSquare, ShieldCheck, Share2, Crown, CheckCircle, Zap, Droplets, Waves, Lock, Video, FileText, MapPin, Sparkles, TrendingUp, ChevronLeft, Box, LayoutTemplate, Loader2, Play, CreditCard, Check, AlertTriangle, ExternalLink, Heart, Ghost } from 'lucide-react';
+import { X, Calendar, MessageSquare, ShieldCheck, Share2, Crown, CheckCircle, Zap, Droplets, Waves, Lock, Video, FileText, MapPin, Sparkles, TrendingUp, ChevronLeft, Box, LayoutTemplate, Loader2, Play, CreditCard, Check, AlertTriangle, ExternalLink, Heart, Ghost, Calculator, Presentation } from 'lucide-react';
 import { generatePropertyDescription } from './services/geminiService';
 import { verifyLandTitle } from './services/landRegistryService';
 import { MOCK_PROPERTIES } from './services/mockData';
@@ -55,9 +65,10 @@ const App: React.FC = () => {
   // Chat State
   const [chatProperty, setChatProperty] = useState<Property | null>(null);
 
-  // Listing Wizard State - Set to TRUE by default for development/testing
-  const [isListingWizardOpen, setIsListingWizardOpen] = useState(true);
+  // Listing Wizard State
+  const [isListingWizardOpen, setIsListingWizardOpen] = useState(false);
   const [wizardInitialText, setWizardInitialText] = useState('');
+  const [wizardInitialMode, setWizardInitialMode] = useState<'ai' | 'manual'>('ai');
   
   // Verification State
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
@@ -68,20 +79,59 @@ const App: React.FC = () => {
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
+  // Mortgage Calculator State
+  const [isMortgageCalculatorOpen, setIsMortgageCalculatorOpen] = useState(false);
+
+  // Land Title Registry Verification State
+  const [isLandTitleModalOpen, setIsLandTitleModalOpen] = useState(false);
+
+  // WhatsApp Business Hub State
+  const [isWhatsAppHubOpen, setIsWhatsAppHubOpen] = useState(false);
+
+  // Ilé 60s Video Walkthrough Studio State
+  const [isIleWalkthroughOpen, setIsIleWalkthroughOpen] = useState(false);
+
+  // Quality Assurance & Testing Suite State
+  const [isQASuiteOpen, setIsQASuiteOpen] = useState(false);
+
   // Live Walkthrough Modal State
   const [isWalkthroughModalOpen, setIsWalkthroughModalOpen] = useState(false);
+
+  // AI Virtual Staging State
+  const [isVirtualStagingModalOpen, setIsVirtualStagingModalOpen] = useState(false);
 
   // 3D Tour & Floor Plan State
   const [viewing3DTour, setViewing3DTour] = useState(false);
   const [viewingFloorPlan, setViewingFloorPlan] = useState(false);
 
-  // Academy State
-  const [isAcademyOpen, setIsAcademyOpen] = useState(false);
-
   // Land Registry State
   const [verifyingTitle, setVerifyingTitle] = useState(false);
   // We'll store the live verification result locally in state for the session
   const [liveVerificationResult, setLiveVerificationResult] = useState<TitleDocument | null>(null);
+
+  // Theme State
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const savedTheme = localStorage.getItem('ile_theme');
+    if (savedTheme) {
+      return savedTheme === 'dark';
+    }
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDarkMode) {
+      root.classList.add('dark');
+      localStorage.setItem('ile_theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      localStorage.setItem('ile_theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const handleToggleTheme = () => {
+    setIsDarkMode(prev => !prev);
+  };
 
   // Load saved properties on mount
   useEffect(() => {
@@ -178,19 +228,25 @@ const App: React.FC = () => {
 
   // Tab Change Handler
   const handleTabChange = (tab: string) => {
-      if (tab === 'add-listing') {
-          setWizardInitialText(''); // Reset for standard add
+      if (tab === 'add-listing' || tab === 'add-listing-ai') {
+          setWizardInitialText('');
+          setWizardInitialMode('ai');
+          setIsListingWizardOpen(true);
+      } else if (tab === 'add-listing-manual') {
+          setWizardInitialText('');
+          setWizardInitialMode('manual');
           setIsListingWizardOpen(true);
       } else {
           setActiveTab(tab);
           setSelectedProperty(null);
-          setGeneratedDesc(null); // Reset generated desc when switching views or properties might change context
+          setGeneratedDesc(null);
           window.scrollTo(0, 0);
       }
   };
 
   const handleQuickAddListing = (text: string) => {
       setWizardInitialText(text);
+      setWizardInitialMode('ai');
       setIsListingWizardOpen(true);
   };
 
@@ -198,7 +254,7 @@ const App: React.FC = () => {
       console.log("Listing Created:", data);
       setIsListingWizardOpen(false);
       setActiveTab('dashboard');
-      alert("Success! Your listing has been drafted and saved to The Veranda.");
+      alert("Success! Your listing has been drafted and saved to your Portfolio.");
   };
 
   // Compute Similar Properties
@@ -331,6 +387,42 @@ const App: React.FC = () => {
                               <p className="text-sm text-on-surface-variant">
                                   {selectedProperty.period === 'total' ? 'Total Price' : selectedProperty.period}
                               </p>
+                          </div>
+                      </div>
+
+                      {/* QUICK AI TOOLBAR & VIRTUAL STAGING BUTTON */}
+                      <div className="mb-8 p-4 bg-gradient-to-r from-purple-900/10 via-indigo-900/5 to-surface-container-low rounded-2xl border border-purple-500/20 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                          <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                                  <Sparkles size={20} className="animate-pulse" />
+                              </div>
+                              <div>
+                                  <div className="flex items-center gap-2">
+                                      <h4 className="font-extrabold text-sm text-on-surface">AI Space Stager & Layout Engine</h4>
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-700 dark:text-purple-300">New</span>
+                                  </div>
+                                  <p className="text-xs text-on-surface-variant">
+                                      Visualize furnished layouts, material specs & Afro-Centric interior styles for empty rooms.
+                                  </p>
+                              </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                              <button
+                                onClick={() => setIsVirtualStagingModalOpen(true)}
+                                className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-all shadow-md flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
+                              >
+                                  <Sparkles size={16} />
+                                  <span>Launch Virtual Staging</span>
+                              </button>
+
+                              <button
+                                onClick={() => setIsWalkthroughModalOpen(true)}
+                                className="px-3.5 py-2.5 rounded-xl bg-surface hover:bg-surface-container border border-outline-variant/30 font-bold text-xs text-on-surface transition-all flex items-center justify-center gap-1.5"
+                              >
+                                  <Video size={14} className="text-primary" />
+                                  <span>Walkthrough</span>
+                              </button>
                           </div>
                       </div>
 
@@ -536,67 +628,90 @@ const App: React.FC = () => {
                         </div>
                       )}
 
-                      <div className="grid md:grid-cols-3 gap-8">
+                      <div className="grid md:grid-cols-3 gap-16">
                           {/* Main Specs */}
-                          <div className="md:col-span-2 space-y-8">
+                          <div className="md:col-span-2 space-y-16">
                               
-                              {/* Features Grid */}
+                              {/* Features Section */}
                               <div>
-                                  <h3 className="font-bold text-lg mb-4 text-on-surface">Features</h3>
-                                  <div className="flex flex-wrap gap-3">
+                                  <h3 className="text-xs font-bold uppercase tracking-widest mb-6 text-on-surface-variant/60">Property Features</h3>
+                                  <div className="flex flex-wrap gap-4">
                                       {selectedProperty.features.map((feat, i) => (
-                                          <span key={i} className="px-4 py-2 bg-surface-container rounded-xl text-sm font-medium text-on-surface-variant">
+                                          <div key={i} className="flex items-center gap-2 px-4 py-2 bg-surface-container/50 rounded-full text-sm font-light text-on-surface">
+                                              <div className="w-1 h-1 rounded-full bg-primary/40" />
                                               {feat}
-                                          </span>
+                                          </div>
                                       ))}
                                       {selectedProperty.isSolarPowered && (
-                                          <span className="px-4 py-2 bg-yellow-50 text-yellow-800 border border-yellow-100 rounded-xl text-sm font-bold flex items-center gap-2">
-                                              <Zap size={14} /> Solar Powered
-                                          </span>
+                                          <div className="px-4 py-2 bg-yellow-50/50 text-yellow-800 border border-yellow-100/50 rounded-full text-sm font-medium flex items-center gap-2">
+                                              <Zap size={14} className="fill-yellow-500" /> Solar Powered
+                                          </div>
                                       )}
                                   </div>
                               </div>
 
-                              {/* Nigerian Context Stats */}
-                              <div className="grid grid-cols-2 gap-4">
-                                  <div className={`p-4 rounded-2xl border ${
-                                      selectedProperty.floodRisk === FloodRisk.LOW ? 'bg-green-50 border-green-100' :
-                                      selectedProperty.floodRisk === FloodRisk.MEDIUM ? 'bg-yellow-50 border-yellow-100' :
-                                      'bg-red-50 border-red-100'
-                                  }`}>
-                                      <p className="text-xs font-bold uppercase tracking-wide mb-1 opacity-70">Flood Risk</p>
-                                      <div className="flex items-center gap-2 font-bold text-lg">
-                                          <Waves size={20} />
-                                          {selectedProperty.floodRisk}
+                              {/* Nigerian Context Stats - More Elegant */}
+                              <div className="grid grid-cols-2 gap-8">
+                                  <div className="space-y-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant/50">Flood Risk Assessment</p>
+                                      <div className={`inline-flex items-center gap-3 px-4 py-2 rounded-full border ${
+                                          selectedProperty.floodRisk === FloodRisk.LOW ? 'bg-green-50/30 border-green-100 text-green-700' :
+                                          selectedProperty.floodRisk === FloodRisk.MEDIUM ? 'bg-yellow-50/30 border-yellow-100 text-yellow-700' :
+                                          'bg-red-50/30 border-red-100 text-red-700'
+                                      }`}>
+                                          <Waves size={16} strokeWidth={1.5} />
+                                          <span className="text-sm font-medium uppercase tracking-wider">{selectedProperty.floodRisk} Risk</span>
                                       </div>
                                   </div>
                                   
-                                  <div className="p-4 rounded-2xl bg-surface-container border border-outline-variant/20">
-                                      <p className="text-xs font-bold uppercase tracking-wide mb-1 opacity-70 text-on-surface-variant">Avg Power</p>
-                                      <div className="flex items-center gap-2 font-bold text-lg text-on-surface">
-                                          <Zap size={20} className={selectedProperty.avgPowerHours > 18 ? 'text-yellow-500' : 'text-gray-400'} />
-                                          {selectedProperty.avgPowerHours} hrs/day
+                                  <div className="space-y-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant/50">Average Daily Power</p>
+                                      <div className="inline-flex items-center gap-3 px-4 py-2 bg-surface-container/30 border border-outline-variant/10 rounded-full text-on-surface">
+                                          <Zap size={16} strokeWidth={1.5} className={selectedProperty.avgPowerHours > 18 ? 'text-yellow-500' : 'text-on-surface-variant/40'} />
+                                          <span className="text-sm font-medium">{selectedProperty.avgPowerHours} Hours / Day</span>
                                       </div>
                                   </div>
                               </div>
 
-                              {/* Price History Chart */}
-                              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                                  <div className="flex items-center gap-2 mb-4">
-                                      <TrendingUp size={18} className="text-green-600" />
-                                      <h3 className="font-bold text-sm">Price Trends (7 Days)</h3>
+                              {/* Price Drop & Alert Subscription (Firebase) */}
+                              <div className="mb-8">
+                                  <PropertyAlertsNotify property={selectedProperty} user={currentUser} />
+                              </div>
+
+                              {/* Commute Calculator */}
+                              <div className="mb-8">
+                                  <CommuteCalculator property={selectedProperty} />
+                              </div>
+
+                              {/* Neighborhood Pulse */}
+                              <div className="mb-8">
+                                  <NeighborhoodPulse property={selectedProperty} />
+                              </div>
+
+                              {/* Google Smart Insights */}
+                              <div className="mb-8">
+                                  <GoogleInsights property={selectedProperty} />
+                              </div>
+
+                              {/* Price History Chart - Minimal */}
+                              <div className="pt-12 border-t border-outline-variant/10">
+                                  <div className="flex items-center justify-between mb-8">
+                                      <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant/60">Valuation Trends</h3>
+                                      <div className="flex items-center gap-2 text-green-600 text-xs font-medium">
+                                          <TrendingUp size={14} />
+                                          <span>Market Appreciation</span>
+                                      </div>
                                   </div>
                                   <div className="h-48 w-full">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <LineChart data={priceHistory}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10}} />
+                                            <XAxis dataKey="name" hide />
                                             <YAxis hide domain={['dataMin - 1000', 'dataMax + 1000']} />
                                             <Tooltip 
-                                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}
-                                                formatter={(val: number) => [`₦${val.toLocaleString()}`, 'Price']}
+                                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontSize: '12px' }}
+                                                formatter={(val: number) => [`₦${val.toLocaleString()}`, 'Value']}
                                             />
-                                            <Line type="monotone" dataKey="price" stroke="#166534" strokeWidth={2} dot={{r: 3}} />
+                                            <Line type="monotone" dataKey="price" stroke="var(--color-primary)" strokeWidth={1.5} dot={false} />
                                         </LineChart>
                                     </ResponsiveContainer>
                                   </div>
@@ -625,6 +740,13 @@ const App: React.FC = () => {
                                     className="w-full py-4 bg-primary text-white rounded-xl font-bold mb-3 flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
                                   >
                                       <CreditCard size={18} /> Rent Now
+                                  </button>
+
+                                  <button 
+                                    onClick={() => setIsMortgageCalculatorOpen(true)}
+                                    className="w-full py-3 bg-surface-container text-primary rounded-xl font-bold mb-3 flex items-center justify-center gap-2 hover:bg-primary/10 transition-colors border border-primary/20"
+                                  >
+                                      <Calculator size={18} /> Mortgage Calculator
                                   </button>
 
                                   <button 
@@ -665,6 +787,13 @@ const App: React.FC = () => {
                                     className="w-full py-3 bg-white border border-gray-200 text-gray-900 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
                                   >
                                       <FileText size={18} /> Draft Agreement
+                                   </button>
+
+                                   <button 
+                                     onClick={() => setIsLandTitleModalOpen(true)}
+                                     className="w-full py-3 bg-emerald-800 text-white rounded-xl font-bold mt-3 flex items-center justify-center gap-2 hover:bg-emerald-900 transition-colors shadow-md shadow-emerald-900/10 border border-emerald-700"
+                                   >
+                                       <ShieldCheck size={18} className="text-emerald-300" /> Verify Land Title & Survey
                                   </button>
                               </div>
                           </div>
@@ -682,6 +811,12 @@ const App: React.FC = () => {
         currentRole={currentUser.role} 
         activeTab={activeTab} 
         onTabChange={handleTabChange} 
+        isDarkMode={isDarkMode}
+        onToggleTheme={handleToggleTheme}
+        user={currentUser}
+        onOpenWhatsAppHub={() => setIsWhatsAppHubOpen(true)}
+        onOpenIleWalkthrough={() => setIsIleWalkthroughOpen(true)}
+        onOpenQASuite={() => setIsQASuiteOpen(true)}
       />
 
       <main className="pt-20 md:pt-24 h-full min-h-screen">
@@ -693,6 +828,7 @@ const App: React.FC = () => {
                 onViewFloorPlan={handleViewFloorPlan}
                 savedPropertyIds={savedPropertyIds}
                 onToggleSave={handleToggleSave}
+                onOpenMortgageCalculator={() => setIsMortgageCalculatorOpen(true)}
               />
           )}
 
@@ -740,8 +876,8 @@ const App: React.FC = () => {
                 user={currentUser} 
                 onVerifyClick={() => setIsVerificationModalOpen(true)} 
                 onTabChange={handleTabChange}
-                onOpenAcademy={() => setIsAcademyOpen(true)}
                 onQuickAdd={handleQuickAddListing}
+                onOpenIleWalkthrough={() => setIsIleWalkthroughOpen(true)}
               />
           )}
 
@@ -749,12 +885,12 @@ const App: React.FC = () => {
               <BrokerageView user={currentUser} />
           )}
 
-          {activeTab === 'network' && (
-              <NetworkMarketingView user={currentUser} />
+          {activeTab === 'academy' && (
+              <AcademyView user={currentUser} onBack={() => handleTabChange('explore')} />
           )}
 
           {activeTab === 'chat' && (
-              <AIChat />
+              <AIChat user={currentUser} />
           )}
 
           {activeTab === 'menu' && (
@@ -763,13 +899,14 @@ const App: React.FC = () => {
                 onLogout={handleLogout} 
                 onVerifyClick={() => setIsVerificationModalOpen(true)}
                 onTabChange={handleTabChange}
+                onUserUpdate={(updated) => setCurrentUser(updated)}
               />
           )}
       </main>
 
       {/* Global Modals */}
       {chatProperty && !selectedProperty && (
-        <ChatModal property={chatProperty} onClose={() => setChatProperty(null)} />
+        <ChatModal property={chatProperty} onClose={() => setChatProperty(null)} user={currentUser} />
       )}
       
       {/* 3D Tour Modal */}
@@ -808,6 +945,7 @@ const App: React.FC = () => {
                 onCancel={() => setIsListingWizardOpen(false)} 
                 onComplete={handleListingComplete}
                 initialInput={wizardInitialText}
+                initialMode={wizardInitialMode}
              />
         </div>
       )}
@@ -819,20 +957,47 @@ const App: React.FC = () => {
             onSuccess={handleVerificationSuccess} 
           />
       )}
-
-      {isAcademyOpen && (
-          <AcademyView user={currentUser} onBack={() => setIsAcademyOpen(false)} />
-      )}
       
        {/* Details View Specific Modals */}
        {isLegalModalOpen && selectedProperty && (
             <LegalGenerator property={selectedProperty} user={currentUser} onClose={() => setIsLegalModalOpen(false)} />
        )}
+       {isLandTitleModalOpen && selectedProperty && (
+            <LandTitleVerificationModal property={selectedProperty} onClose={() => setIsLandTitleModalOpen(false)} />
+       )}
+       {isWhatsAppHubOpen && (
+            <WhatsAppHubModal 
+              properties={properties} 
+              currentUser={currentUser} 
+              onClose={() => setIsWhatsAppHubOpen(false)} 
+            />
+       )}
+       {isIleWalkthroughOpen && (
+            <IleWalkthroughVideoModal
+              user={currentUser}
+              onClose={() => setIsIleWalkthroughOpen(false)}
+            />
+       )}
+       {isQASuiteOpen && (
+            <QATestingSuiteModal 
+              onClose={() => setIsQASuiteOpen(false)} 
+            />
+       )}
        {isWalkthroughModalOpen && selectedProperty && (
             <LiveWalkthroughModal property={selectedProperty} user={currentUser} onClose={() => setIsWalkthroughModalOpen(false)} />
        )}
+       {isVirtualStagingModalOpen && selectedProperty && (
+            <VirtualStagingModal property={selectedProperty} onClose={() => setIsVirtualStagingModalOpen(false)} />
+       )}
        {isPaymentModalOpen && selectedProperty && (
             <RentPaymentModal property={selectedProperty} onClose={() => setIsPaymentModalOpen(false)} />
+       )}
+       {isMortgageCalculatorOpen && (
+            <MortgageCalculator 
+              initialPrice={selectedProperty?.price || 50000000} 
+              propertyTitle={selectedProperty?.title}
+              onClose={() => setIsMortgageCalculatorOpen(false)} 
+            />
        )}
        {chatProperty && selectedProperty && (
             <ChatModal property={chatProperty} onClose={() => setChatProperty(null)} />

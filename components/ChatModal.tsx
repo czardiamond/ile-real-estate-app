@@ -1,18 +1,38 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Property } from '../types';
-import { X, Send, User, Building2 } from 'lucide-react';
+import type { Property, User } from '../types';
+import { X, Send, User as UserIcon, Building2, CloudCheck } from 'lucide-react';
+import { saveChatMessageToFirestore, getChatHistoryFromFirestore } from '../services/firebase';
 
 interface ChatModalProps {
   property: Property;
   onClose: () => void;
+  user?: User;
 }
 
-const ChatModal: React.FC<ChatModalProps> = ({ property, onClose }) => {
-  const [messages, setMessages] = useState<{role: 'user' | 'agent', text: string}[]>([
-    { role: 'agent', text: `Hello! Thanks for your interest in "${property.title}". How can I help you today?` }
-  ]);
+const ChatModal: React.FC<ChatModalProps> = ({ property, onClose, user }) => {
+  const userId = user?.id || 'guest_user';
+  const [messages, setMessages] = useState<{role: 'user' | 'agent', text: string}[]>([]);
   const [input, setInput] = useState(`Hi, is this property in ${property.location.area} still available?`);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Fetch agent conversation history for this property
+    getChatHistoryFromFirestore(userId, 'property_agent', property.id).then(history => {
+      if (history && history.length > 0) {
+        setMessages(history.map(m => ({ role: m.role as 'user' | 'agent', text: m.text })));
+      } else {
+        const initMsg = { role: 'agent' as const, text: `Hello! Thanks for your interest in "${property.title}". How can I help you today?` };
+        setMessages([initMsg]);
+        saveChatMessageToFirestore({
+          userId,
+          chatType: 'property_agent',
+          propertyId: property.id,
+          role: 'agent',
+          text: initMsg.text
+        });
+      }
+    });
+  }, [userId, property.id, property.title]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -20,12 +40,31 @@ const ChatModal: React.FC<ChatModalProps> = ({ property, onClose }) => {
 
   const handleSend = () => {
     if(!input.trim()) return;
-    setMessages(prev => [...prev, { role: 'user', text: input }]);
+
+    const userText = input;
+    setMessages(prev => [...prev, { role: 'user', text: userText }]);
     setInput('');
+
+    // Save to Firestore
+    saveChatMessageToFirestore({
+      userId,
+      chatType: 'property_agent',
+      propertyId: property.id,
+      role: 'user',
+      text: userText
+    });
     
-    // Simulate reply
+    // Simulate agent reply
     setTimeout(() => {
-        setMessages(prev => [...prev, { role: 'agent', text: "Yes, it is! When would you like to come for an inspection?" }]);
+        const replyText = "Yes, it is! When would you like to come for an inspection?";
+        setMessages(prev => [...prev, { role: 'agent', text: replyText }]);
+        saveChatMessageToFirestore({
+          userId,
+          chatType: 'property_agent',
+          propertyId: property.id,
+          role: 'agent',
+          text: replyText
+        });
     }, 1500);
   };
 
@@ -36,7 +75,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ property, onClose }) => {
             <div className="bg-surface-container-low p-4 flex items-center justify-between border-b border-outline-variant/20">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                        <User size={20} />
+                        <UserIcon size={20} />
                     </div>
                     <div>
                         <h3 className="font-bold text-on-surface text-sm">Agent for {property.title.substring(0, 15)}...</h3>

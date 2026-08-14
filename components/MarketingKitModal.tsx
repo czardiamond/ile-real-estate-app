@@ -54,7 +54,7 @@ const MarketingKitModal: React.FC<MarketingKitModalProps> = ({ property, onClose
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-20 space-y-4">
                             <Loader2 size={48} className="text-primary animate-spin" />
-                            <p className="text-on-surface-variant font-medium animate-pulse">Ilé AI is crafting your posts...</p>
+                            <p className="text-on-surface-variant font-medium animate-pulse">Ilé is crafting your posts...</p>
                         </div>
                     ) : kit ? (
                         <>

@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User profile with role, contact info, and verification data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "agencyName": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "name", "role"]
+    },
+    "properties": {
+      "title": "Property",
+      "description": "Real estate property listing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "agentId": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "price", "agentId"]
+    },
+    "property_alerts": {
+      "title": "PropertyAlert",
+      "description": "User notification preferences for properties",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "propertyTitle": { "type": "string" },
+        "notifyPriceDrop": { "type": "boolean" },
+        "notifySimilarListings": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "propertyId"]
+    },
+    "leads": {
+      "title": "Lead",
+      "description": "Property inquiry or viewing request lead",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "propertyId"]
+    },
+    "chat_messages": {
+      "title": "ChatMessage",
+      "description": "Conversation log message for AI chat and agent inquiries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "chatType": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "role": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["userId", "chatType", "role", "text", "timestamp"]
+    }
+  }
+}

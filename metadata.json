@@ -1,9 +1,12 @@
 {
-  "name": "Ilé - Modern Real Estate",
-  "description": "A mobile-first real estate platform for Nigeria connecting buyers, renters, and agents with residential, commercial, and event spaces.",
+  "name": "Ilé",
+  "description": "AI-powered West African real estate platform with Gemini 3.6 Flash multimodal voice listing, land title vision inspector, and WhatsApp Business API hub.",
   "requestFramePermissions": [
     "microphone",
     "camera",
     "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

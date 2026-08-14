@@ -10,8 +10,9 @@ interface VerificationModalProps {
 }
 
 const VerificationModal: React.FC<VerificationModalProps> = ({ user, onClose, onSuccess }) => {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1); // 1: Intro, 2: vNIN, 3: Selfie, 4: Success
-  const [vNIN, setVNIN] = useState('');
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1); // 1: Intro, 2: Gov ID Input, 3: Liveness Selfie, 4: Success
+  const [idType, setIdType] = useState<'VNIN' | 'NIN' | 'BVN' | 'CAC'>('VNIN');
+  const [idNumber, setIdNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -45,6 +46,15 @@ const VerificationModal: React.FC<VerificationModalProps> = ({ user, onClose, on
     }
   };
 
+  const isInputValid = () => {
+    const cleaned = idNumber.trim();
+    if (idType === 'VNIN') return cleaned.length === 16 && /^\d+$/.test(cleaned);
+    if (idType === 'NIN') return cleaned.length === 11 && /^\d+$/.test(cleaned);
+    if (idType === 'BVN') return cleaned.length === 11 && /^\d+$/.test(cleaned);
+    if (idType === 'CAC') return cleaned.length >= 6;
+    return false;
+  };
+
   const captureAndSubmit = async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
@@ -59,16 +69,16 @@ const VerificationModal: React.FC<VerificationModalProps> = ({ user, onClose, on
         setError('');
 
         try {
-            const result = await submitIdentityVerification(user.id, vNIN, imageBase64);
+            const result = await submitIdentityVerification(user.id, idNumber, imageBase64, idType);
             if (result.success && result.data) {
                 onSuccess(result.data);
                 setStep(4);
             } else {
-                setError(result.message || "Verification failed.");
+                setError(result.message || "Government ID verification failed.");
                 setStep(2); // Go back to try again
             }
         } catch (e) {
-            setError("Network error. Please try again.");
+            setError("Network error contacting NIMC/NIBSS verification server. Please try again.");
             setStep(2);
         } finally {
             setIsLoading(false);
@@ -134,28 +144,113 @@ const VerificationModal: React.FC<VerificationModalProps> = ({ user, onClose, on
                 </div>
             )}
 
-            {/* STEP 2: vNIN INPUT */}
+            {/* STEP 2: GOV ID SELECTION & INPUT */}
             {step === 2 && (
-                <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Virtual NIN (vNIN)</label>
-                    <input 
-                        type="text" 
-                        maxLength={16}
-                        placeholder="Enter 16-digit vNIN"
-                        value={vNIN}
-                        onChange={(e) => setVNIN(e.target.value.replace(/\D/g, ''))}
-                        className="w-full p-4 border border-gray-300 rounded-xl text-lg tracking-widest font-mono mb-4 focus:border-primary outline-none"
-                    />
-                    <div className="bg-yellow-50 p-3 rounded-lg text-xs text-yellow-800 mb-6">
-                        <strong>How to get it:</strong> Dial <code>*346*3*YourNIN*121021#</code> (Enterprise ID for Ilé). 
-                        Do <strong>NOT</strong> use your raw 11-digit NIN.
+                <div className="space-y-4">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                        Select Government ID Method
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                        <button
+                            type="button"
+                            onClick={() => { setIdType('VNIN'); setIdNumber(''); setError(''); }}
+                            className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
+                                idType === 'VNIN' 
+                                ? 'border-primary bg-primary/10 text-primary shadow-sm' 
+                                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            Virtual NIN (vNIN)
+                            <span className="block text-[10px] text-gray-500 font-normal mt-0.5">16-Digit NIMC Code</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setIdType('NIN'); setIdNumber(''); setError(''); }}
+                            className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
+                                idType === 'NIN' 
+                                ? 'border-primary bg-primary/10 text-primary shadow-sm' 
+                                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            Raw NIN Number
+                            <span className="block text-[10px] text-gray-500 font-normal mt-0.5">11-Digit NIMC NIN</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setIdType('BVN'); setIdNumber(''); setError(''); }}
+                            className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
+                                idType === 'BVN' 
+                                ? 'border-primary bg-primary/10 text-primary shadow-sm' 
+                                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            NIBSS BVN
+                            <span className="block text-[10px] text-gray-500 font-normal mt-0.5">11-Digit Bank Number</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setIdType('CAC'); setIdNumber(''); setError(''); }}
+                            className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
+                                idType === 'CAC' 
+                                ? 'border-primary bg-primary/10 text-primary shadow-sm' 
+                                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            CAC Registration
+                            <span className="block text-[10px] text-gray-500 font-normal mt-0.5">Company RC / BN</span>
+                        </button>
                     </div>
+
+                    <div>
+                        <div className="flex justify-between items-center mb-1">
+                            <label className="block text-xs font-bold text-gray-700">
+                                {idType === 'VNIN' && "16-Digit NIMC Virtual NIN (vNIN)"}
+                                {idType === 'NIN' && "11-Digit NIMC Raw National Identity Number (NIN)"}
+                                {idType === 'BVN' && "11-Digit NIBSS Bank Verification Number (BVN)"}
+                                {idType === 'CAC' && "CAC Business Registration Number (RC/BN)"}
+                            </label>
+                            <span className="text-[10px] font-mono text-primary font-bold">
+                                {idNumber.length} {idType === 'VNIN' ? '/ 16' : idType === 'NIN' || idType === 'BVN' ? '/ 11' : ''}
+                            </span>
+                        </div>
+                        <input 
+                            type="text" 
+                            maxLength={idType === 'VNIN' ? 16 : idType === 'NIN' || idType === 'BVN' ? 11 : 15}
+                            placeholder={
+                                idType === 'VNIN' ? "1234 5678 9012 3456" :
+                                idType === 'NIN' ? "11223344556" :
+                                idType === 'BVN' ? "22114433556" : "RC123456"
+                            }
+                            value={idNumber}
+                            onChange={(e) => {
+                                const val = idType === 'CAC' ? e.target.value.toUpperCase() : e.target.value.replace(/\D/g, '');
+                                setIdNumber(val);
+                            }}
+                            className="w-full p-3.5 border border-gray-300 rounded-xl text-base tracking-wider font-mono mb-3 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                        />
+                    </div>
+
+                    <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-xs text-emerald-900">
+                        {idType === 'VNIN' && (
+                            <span><strong>How to generate vNIN:</strong> Dial <code>*346*3*YourNIN*121021#</code> from your registered phone number. Generates secure 16-digit NIMC token for Ilé.</span>
+                        )}
+                        {idType === 'NIN' && (
+                            <span><strong>NIMC Portal Direct Verification:</strong> Your 11-digit NIN will be checked against the official NIMC database checksum gateway.</span>
+                        )}
+                        {idType === 'BVN' && (
+                            <span><strong>NIBSS Portal Check:</strong> Your 11-digit BVN will be cross-checked with NIBSS verification service.</span>
+                        )}
+                        {idType === 'CAC' && (
+                            <span><strong>CAC Business Verification:</strong> Enter your official Corporate Affairs Commission RC or BN number for company identity check.</span>
+                        )}
+                    </div>
+
                     <button 
                         onClick={() => setStep(3)}
-                        disabled={vNIN.length !== 16}
-                        className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary/90 disabled:opacity-50"
+                        disabled={!isInputValid()}
+                        className="w-full bg-primary text-white py-3.5 rounded-xl font-bold hover:bg-primary/90 disabled:opacity-50 transition-all shadow-md mt-2"
                     >
-                        Continue to Selfie
+                        Proceed to Biometric Liveness Check
                     </button>
                 </div>
             )}

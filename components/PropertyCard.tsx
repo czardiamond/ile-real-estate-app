@@ -144,12 +144,12 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
       )}
 
       {/* Image Container */}
-      <div className={`relative w-full bg-gray-100 overflow-hidden ${compact ? 'h-32 rounded-xl mb-2' : 'h-56'}`}>
+      <div className={`relative w-full bg-surface-container overflow-hidden ${compact ? 'h-36 rounded-2xl mb-3' : 'h-72'}`}>
         
         {renderPropertyMedia()}
         
         {/* Floating Tag */}
-        <div className={`absolute top-3 left-3 bg-white/90 backdrop-blur-md rounded-lg font-bold text-gray-900 shadow-sm transition-all z-10 ${compact ? 'px-2 py-1 text-[10px]' : 'px-3 py-1.5 text-xs'}`}>
+        <div className={`absolute top-4 left-4 bg-white/80 backdrop-blur-md rounded-full font-bold text-on-surface shadow-sm transition-all z-10 ${compact ? 'px-3 py-1 text-[10px]' : 'px-4 py-2 text-xs uppercase tracking-widest'}`}>
             {property.type}
         </div>
 
@@ -183,70 +183,67 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
       </div>
       
       {/* Content */}
-      <div className={`flex-1 flex flex-col ${compact ? 'px-1' : 'p-5 pt-4'}`}>
+      <div className={`flex-1 flex flex-col ${compact ? 'px-2 pb-2' : 'p-8 pt-6'}`}>
         
         {/* Header Section */}
-        <div className="flex justify-between items-start mb-2">
-            <div className="flex-1 min-w-0 pr-2">
+        <div className="flex justify-between items-start mb-4">
+            <div className="flex-1 min-w-0">
                 {!compact && (
-                    <h2 className="text-xl font-bold text-primary mb-1">
+                    <h2 className="text-3xl font-light text-primary mb-2 tracking-tight">
                         {formatCurrency(property.price)}
-                        <span className="text-sm text-gray-500 font-normal ml-1">
+                        <span className="text-sm text-on-surface-variant/60 font-normal ml-2">
                              {property.period !== 'total' ? `/ ${property.period.replace('per ', '')}` : ''}
                         </span>
                     </h2>
                 )}
-                <h3 className={`font-semibold text-gray-900 truncate ${compact ? 'text-xs mb-0.5' : 'text-lg leading-tight'}`}>
+                <h3 className={`font-medium text-on-surface leading-tight ${compact ? 'text-sm mb-1' : 'text-xl mb-2'}`}>
                     {property.title}
                 </h3>
             </div>
         </div>
         
         {/* Location */}
-        <div className={`flex items-center text-gray-500 mb-4 ${compact ? 'text-[10px]' : 'text-sm'}`}>
-            <MapPin size={compact ? 10 : 14} className="mr-1 opacity-70 shrink-0" />
+        <div className={`flex items-center text-on-surface-variant/70 mb-6 ${compact ? 'text-[10px]' : 'text-sm font-light'}`}>
+            <MapPin size={compact ? 10 : 14} className="mr-1.5 opacity-50 shrink-0" />
             <span className="truncate">{property.location.area}, {property.location.city}</span>
         </div>
 
-        {/* Specs Grid */}
-        <div className={`flex items-center gap-3 text-gray-700 font-medium ${compact ? 'text-[10px] mb-2' : 'text-sm mb-5'}`}>
+        {/* Specs Grid - Subtle Icons */}
+        <div className={`flex items-center gap-6 text-on-surface-variant/60 ${compact ? 'text-[10px] mb-3' : 'text-xs mb-8'}`}>
             {!isBusiness && !isOwambe && (
                 <>
-                    <div className="flex items-center gap-1.5">
-                        <Bed size={compact ? 12 : 16} className="text-gray-400" /> 
-                        <span>{property.specs.bedrooms} Beds</span>
+                    <div className="flex items-center gap-2">
+                        <Bed size={compact ? 12 : 16} strokeWidth={1.5} /> 
+                        <span>{property.specs.bedrooms}</span>
                     </div>
-                    <div className="w-px h-3 bg-gray-300"></div>
-                    <div className="flex items-center gap-1.5">
-                        <Bath size={compact ? 12 : 16} className="text-gray-400" /> 
-                        <span>{property.specs.bathrooms} Baths</span>
+                    <div className="flex items-center gap-2">
+                        <Bath size={compact ? 12 : 16} strokeWidth={1.5} /> 
+                        <span>{property.specs.bathrooms}</span>
                     </div>
                 </>
             )}
             {(isOwambe || isBusiness) && (
-                    <div className="flex items-center gap-1.5">
-                    {isOwambe ? <Users size={compact ? 12 : 16} className="text-gray-400" /> : <Maximize2 size={compact ? 12 : 16} className="text-gray-400" />} 
+                    <div className="flex items-center gap-2">
+                    {isOwambe ? <Users size={compact ? 12 : 16} strokeWidth={1.5} /> : <Maximize2 size={compact ? 12 : 16} strokeWidth={1.5} />} 
                     <span>{isOwambe ? property.specs.capacity : property.specs.sizeSqM} {isOwambe ? 'Guests' : 'm²'}</span>
                 </div>
             )}
         </div>
 
-        {!compact && <div className="h-px bg-gray-100 w-full mb-4"></div>}
-
         {/* Footer: Agent & Actions */}
         {!compact && (
-            <div className="mt-auto flex items-center justify-between">
+            <div className="mt-auto flex items-center justify-between pt-6 border-t border-outline-variant/10">
                  {/* Agent Info */}
-                 <div className="flex items-center gap-2">
+                 <div className="flex items-center gap-3">
                      <div className="relative">
-                        <img src={agent.avatar} alt={agent.name} className="w-8 h-8 rounded-full bg-gray-100 object-cover" />
-                        <div className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5">
-                            <CheckCircle size={10} className="text-green-500 fill-white" />
+                        <img src={agent.avatar} alt={agent.name} className="w-10 h-10 rounded-full bg-surface-container object-cover grayscale hover:grayscale-0 transition-all" />
+                        <div className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow-sm">
+                            <CheckCircle size={12} className="text-primary" />
                         </div>
                      </div>
                      <div className="flex flex-col">
-                         <span className="text-xs font-bold text-gray-900 line-clamp-1">{agent.name.split(' ')[0]}</span>
-                         <span className="text-[10px] text-gray-500">Agent</span>
+                         <span className="text-xs font-medium text-on-surface">{agent.name}</span>
+                         <span className="text-[10px] text-on-surface-variant/60 uppercase tracking-widest">Verified Agent</span>
                      </div>
                  </div>
 

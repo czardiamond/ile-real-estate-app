@@ -1,25 +1,102 @@
 
-import React, { useState } from 'react';
-import { User, VerificationStatus } from '../types';
+import React, { useState, useEffect } from 'react';
+import { VerificationStatus } from '../types';
+import type { User } from '../types';
 import { 
   User as UserIcon, Settings, Shield, Lock, Info, LogOut, 
   ChevronRight, CreditCard, Bell, Globe, Moon, HelpCircle, 
-  FileText, CheckCircle, AlertTriangle, ArrowLeft, Camera, Save, Mail, MessageSquare
+  FileText, CheckCircle, AlertTriangle, ArrowLeft, Camera, Save, Mail, MessageSquare, CloudCheck, Loader2
 } from 'lucide-react';
 import Logo from './Logo';
+import { saveUserProfileToFirestore, getUserProfileFromFirestore } from '../services/firebase';
 
 interface ProfileSettingsViewProps {
   user: User;
   onLogout: () => void;
   onVerifyClick: () => void;
   onTabChange: (tab: string) => void;
+  onUserUpdate?: (updatedUser: User) => void;
 }
 
 type SubView = 'main' | 'personal-info' | 'about' | 'privacy' | 'notifications';
 
-const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogout, onVerifyClick, onTabChange }) => {
+const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogout, onVerifyClick, onTabChange, onUserUpdate }) => {
   const [currentView, setCurrentView] = useState<SubView>('main');
-  const isVerified = user.verification.status === VerificationStatus.VERIFIED;
+  const [currentUserData, setCurrentUserData] = useState<User>(user);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
+
+  // Form states
+  const [fullName, setFullName] = useState(user.name);
+  const [email, setEmail] = useState(user.email);
+  const [phone, setPhone] = useState(user.phone);
+  const [agencyName, setAgencyName] = useState(user.agencyName || '');
+
+  // Notifications preferences state
+  const [notifState, setNotifState] = useState({
+    listingAlerts: true,
+    messages: true,
+    priceDrops: true,
+    marketing: false
+  });
+
+  useEffect(() => {
+    // Fetch latest profile from Firestore on mount
+    getUserProfileFromFirestore(user.id).then(fetched => {
+      if (fetched) {
+        setCurrentUserData(fetched);
+        setFullName(fetched.name);
+        setEmail(fetched.email);
+        setPhone(fetched.phone);
+        setAgencyName(fetched.agencyName || '');
+      }
+    });
+  }, [user.id]);
+
+  // Avatar Upload Handler
+  const handleAvatarFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      if (typeof reader.result === 'string') {
+        const newAvatar = reader.result;
+        const updated: User = { ...currentUserData, avatarUrl: newAvatar };
+        setCurrentUserData(updated);
+        if (onUserUpdate) onUserUpdate(updated);
+        await saveUserProfileToFirestore(updated);
+        setSaveSuccessMsg('Avatar updated and saved to Firestore successfully!');
+        setTimeout(() => setSaveSuccessMsg(''), 4000);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const isVerified = currentUserData.verification.status === VerificationStatus.VERIFIED;
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setSaveSuccessMsg('');
+
+    const updated: User = {
+      ...currentUserData,
+      name: fullName,
+      email: email,
+      phone: phone,
+      agencyName: agencyName
+    };
+
+    const ok = await saveUserProfileToFirestore(updated);
+    setIsSaving(false);
+
+    if (ok) {
+      setCurrentUserData(updated);
+      if (onUserUpdate) onUserUpdate(updated);
+      setSaveSuccessMsg('Profile synced to Firebase Firestore successfully!');
+      setTimeout(() => setSaveSuccessMsg(''), 4000);
+    }
+  };
 
   // --- Sub-Views ---
 
@@ -38,36 +115,70 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
       <div className="p-4 max-w-lg mx-auto">
         <div className="flex flex-col items-center mb-8">
             <div className="relative">
-                <img src={user.avatarUrl} alt="Profile" className="w-24 h-24 rounded-full border-4 border-white shadow-sm" />
-                <button className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full shadow-sm hover:bg-primary/90">
+                <img src={currentUserData.avatarUrl} alt="Profile" className="w-24 h-24 rounded-full border-4 border-white shadow-sm object-cover" />
+                <label className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full shadow-sm hover:bg-primary/90 cursor-pointer">
                     <Camera size={16} />
-                </button>
+                    <input type="file" accept="image/*" onChange={handleAvatarFileSelect} className="hidden" />
+                </label>
             </div>
-            <p className="mt-2 text-sm text-gray-500">Tap to change avatar</p>
+            <p className="mt-2 text-sm text-gray-500">Tap camera icon to upload custom avatar photo</p>
         </div>
 
-        <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+        {saveSuccessMsg && (
+          <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-emerald-800 text-sm font-semibold animate-in fade-in">
+            <CloudCheck size={20} className="text-emerald-600 flex-shrink-0" />
+            <span>{saveSuccessMsg}</span>
+          </div>
+        )}
+
+        <form className="space-y-4" onSubmit={handleSaveProfile}>
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name</label>
-                    <input type="text" defaultValue={user.name} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" />
+                    <input 
+                      type="text" 
+                      value={fullName} 
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" 
+                    />
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email Address</label>
-                    <input type="email" defaultValue={user.email} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" />
+                    <input 
+                      type="email" 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" 
+                    />
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone Number</label>
-                    <input type="tel" defaultValue={user.phone} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" />
+                    <input 
+                      type="tel" 
+                      value={phone} 
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" 
+                    />
                 </div>
                  <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Agency Name (Optional)</label>
-                    <input type="text" defaultValue={user.agencyName || ''} placeholder="e.g. Lekki Homes" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" />
+                    <input 
+                      type="text" 
+                      value={agencyName} 
+                      onChange={(e) => setAgencyName(e.target.value)}
+                      placeholder="e.g. Lekki Homes" 
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" 
+                    />
                 </div>
             </div>
 
-            <button className="w-full bg-primary text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary/90">
-                <Save size={20} /> Save Changes
+            <button 
+              type="submit" 
+              disabled={isSaving}
+              className="w-full bg-primary text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+                {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />} 
+                {isSaving ? 'Syncing to Cloud...' : 'Save & Sync to Firestore'}
             </button>
         </form>
       </div>
@@ -76,20 +187,20 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
 
   const AboutView = () => (
     <div className="min-h-full bg-white pb-8">
-      <Header title="About Ilé" onBack={() => setCurrentView('main')} />
+      <Header title="About Gemini" onBack={() => setCurrentView('main')} />
       <div className="p-6 max-w-lg mx-auto text-center">
         <div className="w-20 h-20 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <Logo size={40} />
         </div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">Ilé</h3>
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">Gemini</h3>
         <p className="text-gray-500 font-medium mb-8">Version 1.0.2 (Beta)</p>
         
         <div className="text-left space-y-4 text-gray-700 leading-relaxed bg-gray-50 p-6 rounded-2xl border border-gray-100">
             <p>
-                <strong>Ilé</strong> (Yoruba for "Home") is Nigeria's first AI-powered real estate companion. We are on a mission to bring trust, transparency, and ease to finding property in Nigeria.
+                <strong>Gemini</strong> (formerly Ilé) is Nigeria's first AI-powered real estate companion. We are on a mission to bring trust, transparency, and ease to finding property in Nigeria.
             </p>
             <p>
-                Whether you are looking for a flat in Yaba, a shop in Alaba, or an event center for your Owambe, Ilé helps you find it without the usual "agent wahala".
+                Whether you are looking for a flat in Yaba, a shop in Alaba, or an event center for your Owambe, Gemini helps you find it without the usual "agent wahala".
             </p>
             <p className="pt-4 text-xs text-gray-500 border-t border-gray-200">
                 Designed & Built with ❤️ in Lagos.
@@ -97,9 +208,30 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
         </div>
 
         <div className="mt-8 flex justify-center gap-4">
-            <button className="p-3 bg-gray-100 rounded-full text-gray-600 hover:bg-gray-200"><Globe size={20} /></button>
-            <button className="p-3 bg-gray-100 rounded-full text-gray-600 hover:bg-gray-200"><Mail size={20} /></button>
-            <button className="p-3 bg-gray-100 rounded-full text-gray-600 hover:bg-gray-200"><Shield size={20} /></button>
+            <button 
+              type="button"
+              onClick={() => window.open('https://ile.ng', '_blank', 'noopener,noreferrer')} 
+              className="p-3 bg-gray-100 rounded-full text-gray-600 hover:bg-primary/10 hover:text-primary transition-all cursor-pointer shadow-sm hover:scale-110 active:scale-95"
+              title="Visit Website (https://ile.ng)"
+            >
+              <Globe size={20} />
+            </button>
+            <button 
+              type="button"
+              onClick={() => { window.location.href = 'mailto:support@ile.ng'; }} 
+              className="p-3 bg-gray-100 rounded-full text-gray-600 hover:bg-primary/10 hover:text-primary transition-all cursor-pointer shadow-sm hover:scale-110 active:scale-95"
+              title="Email Support (support@ile.ng)"
+            >
+              <Mail size={20} />
+            </button>
+            <button 
+              type="button"
+              onClick={() => setCurrentView('privacy')} 
+              className="p-3 bg-gray-100 rounded-full text-gray-600 hover:bg-primary/10 hover:text-primary transition-all cursor-pointer shadow-sm hover:scale-110 active:scale-95"
+              title="View Privacy Policy"
+            >
+              <Shield size={20} />
+            </button>
         </div>
       </div>
     </div>
@@ -117,7 +249,7 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
             <ul>
                 <li>Contact information (Email, Phone)</li>
                 <li>Property preferences and search history</li>
-                <li>Usage data to improve Ilé AI</li>
+                <li>Usage data to improve Gemini AI</li>
             </ul>
 
             <h3>Your Rights</h3>
@@ -135,7 +267,7 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
                 { label: 'New Listing Alerts', desc: 'Get notified when new properties match your search.', default: true },
                 { label: 'Message Notifications', desc: 'When an agent or client messages you.', default: true },
                 { label: 'Price Drops', desc: 'Alerts when saved properties reduce price.', default: false },
-                { label: 'Marketing & Tips', desc: 'News from the Ilé team.', default: false }
+                { label: 'Marketing & Tips', desc: 'News from the Gemini team.', default: false }
             ].map((item, i) => (
                 <div key={i} className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
                     <div>
@@ -182,18 +314,22 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
       {/* Profile Header */}
       <div className="bg-white p-6 mb-6 border-b border-gray-200 shadow-sm md:rounded-b-2xl">
         <div className="flex flex-col items-center text-center">
-          <div className="relative mb-4">
+          <div className="relative mb-4 group cursor-pointer" onClick={() => setCurrentView('personal-info')}>
             <img 
-              src={user.avatarUrl} 
-              alt={user.name} 
+              src={currentUserData.avatarUrl} 
+              alt={currentUserData.name} 
               className="w-24 h-24 rounded-full border-4 border-white shadow-lg object-cover"
             />
-            <div className={`absolute bottom-0 right-0 p-1.5 rounded-full border-2 border-white shadow-sm ${isVerified ? 'bg-green-500' : 'bg-gray-400'}`}>
-              {isVerified ? <CheckCircle size={14} className="text-white" /> : <AlertTriangle size={14} className="text-white" />}
+            <label className="absolute bottom-0 right-0 p-1.5 rounded-full border-2 border-white shadow-sm bg-primary text-white hover:scale-110 transition-transform cursor-pointer">
+              <Camera size={14} />
+              <input type="file" accept="image/*" onChange={handleAvatarFileSelect} className="hidden" onClick={(e) => e.stopPropagation()} />
+            </label>
+            <div className={`absolute top-0 right-0 p-1 rounded-full border-2 border-white shadow-sm ${isVerified ? 'bg-green-500' : 'bg-gray-400'}`}>
+              {isVerified ? <CheckCircle size={12} className="text-white" /> : <AlertTriangle size={12} className="text-white" />}
             </div>
           </div>
-          <h2 className="text-xl font-bold text-gray-900">{user.name}</h2>
-          <p className="text-gray-500 text-sm mb-2">{user.email}</p>
+          <h2 className="text-xl font-bold text-gray-900">{currentUserData.name}</h2>
+          <p className="text-gray-500 text-sm mb-2">{currentUserData.email}</p>
           <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${
             isVerified 
               ? 'bg-green-50 text-green-700 border-green-200' 
@@ -214,7 +350,7 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
               </div>
               <div className="text-left">
                 <p className="text-sm font-bold text-red-800">Verify your Identity</p>
-                <p className="text-xs text-red-600">Unlock full access to Ilé</p>
+                <p className="text-xs text-red-600">Unlock full access to Gemini</p>
               </div>
             </div>
             <ChevronRight size={18} className="text-red-400" />
@@ -248,7 +384,7 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
              <MenuItem 
                 icon={MessageSquare} 
-                label="Ilé AI Assistant" 
+                label="Gemini AI Assistant" 
                 subLabel="Chat with your AI copilot"
                 onClick={() => onTabChange('chat')} 
             />
@@ -306,7 +442,7 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
             />
              <MenuItem 
                 icon={Info} 
-                label="About Ilé" 
+                label="About Gemini" 
                 subLabel="Version 1.0.2 (Beta)"
                 onClick={() => setCurrentView('about')} 
             />
@@ -321,7 +457,7 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
         </button>
 
         <div className="text-center text-xs text-gray-400 mt-8 pb-8">
-            Ilé Real Estate Platform © 2025
+            Gemini Real Estate Platform © 2025
         </div>
       </div>
     </div>

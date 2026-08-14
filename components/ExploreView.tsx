@@ -4,7 +4,8 @@ import { MOCK_PROPERTIES } from '../services/mockData';
 import PropertyCard from './PropertyCard';
 import CompareModal from './CompareModal';
 import { Property, PropertyType, FloodRisk } from '../types';
-import { Search, Filter, Home, GlassWater, PartyPopper, Briefcase, Map as MapIcon, X, Car, Zap, Check, ChevronDown, Waves, List, Bed, Bath, Armchair, Sparkles, Scale, Locate, ArrowUpDown, Calendar, DollarSign } from 'lucide-react';
+import { Search, Filter, Home, GlassWater, PartyPopper, Briefcase, Map as MapIcon, X, Car, Zap, Check, ChevronDown, Waves, List, Bed, Bath, Armchair, Sparkles, Scale, Locate, ArrowUpDown, Calendar, DollarSign, Calculator, Flame } from 'lucide-react';
+import { PriceHeatmap } from './PriceHeatmap';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -30,6 +31,7 @@ interface ExploreViewProps {
   onViewFloorPlan: (property: Property) => void;
   savedPropertyIds?: Set<string>;
   onToggleSave?: (id: string) => void;
+  onOpenMortgageCalculator: () => void;
 }
 
 // Component to handle map bounds updates
@@ -88,11 +90,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({
     onView3D, 
     onViewFloorPlan,
     savedPropertyIds,
-    onToggleSave
+    onToggleSave,
+    onOpenMortgageCalculator
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('All');
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'map' | 'heatmap'>('list');
   const [selectedMapPin, setSelectedMapPin] = useState<Property | null>(null);
   
   // Filter State
@@ -329,84 +332,127 @@ const ExploreView: React.FC<ExploreViewProps> = ({
         }
       `}</style>
       
-      {/* Search Header */}
-      <div className="px-4 md:px-8 mb-6 sticky top-[0px] md:top-20 z-30 bg-surface/90 backdrop-blur-md py-4 transition-all">
-        {/* Floating Search Pill & Map Toggle */}
-        <div className="flex gap-3 mb-4 max-w-2xl mx-auto">
-            <div className="relative flex-1 shadow-lg rounded-full">
-                <input 
-                    type="text"
-                    placeholder="Search Lekki, Wuse, Duplex..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 rounded-full bg-white border border-gray-200 text-on-surface placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-lg transition-all"
-                />
-                <Search className="absolute left-4 top-4.5 text-gray-400" size={24} />
+      {/* Search & Categories Header */}
+      <div className="px-4 md:px-8 mb-6 bg-surface py-3 transition-all border-b border-outline-variant/30">
+        <div className="max-w-6xl mx-auto space-y-4">
+          {/* Main Search Bar Row */}
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            {/* Search Input Box with Sparkles & Filter */}
+            <div className="relative flex-1 w-full bg-surface-container-low dark:bg-slate-900 rounded-full border border-outline-variant/60 shadow-sm hover:shadow-md focus-within:shadow-md focus-within:border-primary transition-all flex items-center px-4 py-1.5">
+              <Search className="text-on-surface-variant/60 shrink-0 mr-2" size={20} />
+              <input 
+                type="text"
+                placeholder="Search Lekki, Wuse, Duplex, Short-let..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-transparent border-none outline-none text-on-surface placeholder:text-on-surface-variant/50 text-sm font-medium py-2"
+              />
+              <div className="flex items-center gap-1 shrink-0 ml-2 pl-2 border-l border-outline-variant/40">
+                <button 
+                  onClick={() => setIsFilterOpen(true)}
+                  className={`p-2 rounded-full transition-colors flex items-center gap-1.5 ${
+                    isFilterActive 
+                    ? 'bg-primary/10 text-primary font-semibold' 
+                    : 'text-on-surface-variant hover:bg-surface-container'
+                  }`}
+                  title="Filter Properties"
+                >
+                  <Filter size={18} />
+                  {isFilterActive && <span className="w-2 h-2 rounded-full bg-primary" />}
+                </button>
+              </div>
             </div>
-            
-            <button 
-                onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
-                className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${
+
+            {/* View Mode & Tools Toolbar Row */}
+            <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar py-1">
+              {/* View Switchers */}
+              <div className="flex items-center gap-1 bg-surface-container p-1 rounded-full border border-outline-variant/40 shadow-inner shrink-0">
+                <button 
+                  onClick={() => setViewMode('list')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    viewMode === 'list' 
+                    ? 'bg-primary text-white shadow-sm' 
+                    : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <List size={15} />
+                  <span>List</span>
+                </button>
+
+                <button 
+                  onClick={() => setViewMode('map')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
                     viewMode === 'map' 
-                    ? 'bg-primary text-white shadow-primary/30' 
-                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                    ? 'bg-primary text-white shadow-sm' 
+                    : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <MapIcon size={15} />
+                  <span>Map</span>
+                </button>
+
+                <button 
+                  onClick={() => setViewMode('heatmap')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    viewMode === 'heatmap' 
+                    ? 'bg-amber-600 text-white shadow-sm' 
+                    : 'text-amber-700 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
+                  }`}
+                  title="Google Maps Price Valuation Heatmap"
+                >
+                  <Flame size={15} className="animate-pulse" />
+                  <span>Heatmap</span>
+                </button>
+              </div>
+
+              {/* Compare Mode Toggle */}
+              <button
+                onClick={() => setIsCompareMode(!isCompareMode)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 shrink-0 ${
+                  isCompareMode 
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm' 
+                  : 'bg-surface-container-low border-outline-variant/60 text-on-surface hover:bg-surface-container'
                 }`}
-            >
-                {viewMode === 'list' ? <MapIcon size={24} /> : <List size={24} />}
-            </button>
-        </div>
+              >
+                <Scale size={15} />
+                <span>Compare</span>
+                {compareList.length > 0 && (
+                  <span className="bg-purple-200 dark:bg-purple-900 text-purple-900 dark:text-purple-100 font-bold px-1.5 py-0.2 rounded-full text-[10px]">
+                    {compareList.length}
+                  </span>
+                )}
+              </button>
 
-        {/* Categories & Actions Row */}
-        <div className="max-w-7xl mx-auto">
-            <div className={`flex gap-2 overflow-x-auto no-scrollbar pb-1 pl-1 transition-all ${viewMode === 'map' ? 'opacity-50 hover:opacity-100' : 'opacity-100'}`}>
-                <button 
-                    onClick={() => setIsFilterOpen(true)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-colors shrink-0 shadow-sm ${
-                        isFilterActive
-                        ? 'bg-secondary-container text-on-secondary-container border-secondary' 
-                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-                    }`}
-                >
-                    <Filter size={18} />
-                    <span className="text-sm font-bold">Filters</span>
-                    {isFilterActive && (
-                        <div className="w-2 h-2 rounded-full bg-secondary"></div>
-                    )}
-                </button>
-                
-                {/* Compare Toggle */}
-                <button 
-                    onClick={() => setIsCompareMode(!isCompareMode)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-colors shrink-0 shadow-sm ${
-                        isCompareMode
-                        ? 'bg-primary-container text-on-primary-container border-primary-container' 
-                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-                    }`}
-                >
-                    <Scale size={18} />
-                    <span className="text-sm font-bold">{isCompareMode ? 'Done' : 'Compare'}</span>
-                </button>
-
-                <div className="w-[1px] h-8 bg-gray-300 mx-1 shrink-0 self-center"></div>
-
-                {categories.map(cat => {
-                    const isActive = activeCategory === cat.id;
-                    return (
-                        <button
-                            key={cat.id}
-                            onClick={() => { setActiveCategory(cat.id); setFilterPropertyTypes([]); }} // Reset types on category change
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all shrink-0 shadow-sm ${
-                                isActive
-                                ? 'bg-gray-900 text-white border border-gray-900 shadow-md transform scale-105' 
-                                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                            }`}
-                        >
-                            {cat.icon && <cat.icon size={18} />}
-                            {cat.label}
-                        </button>
-                    )
-                })}
+              {/* Mortgage Calculator Button */}
+              <button 
+                onClick={onOpenMortgageCalculator}
+                className="p-2 rounded-full bg-surface-container-low text-primary border border-outline-variant/60 shadow-sm hover:bg-primary/10 transition-all shrink-0"
+                title="Mortgage Calculator"
+              >
+                <Calculator size={18} />
+              </button>
             </div>
+          </div>
+
+          {/* Categories Pill Row */}
+          <div className="flex items-center gap-6 overflow-x-auto no-scrollbar py-2 border-t border-outline-variant/20 pt-3">
+            {categories.map(cat => {
+              const isActive = activeCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => { setActiveCategory(cat.id); setFilterPropertyTypes([]); }}
+                  className={`flex items-center gap-2 text-sm font-semibold whitespace-nowrap transition-all relative py-1 px-3 rounded-full ${
+                    isActive
+                    ? 'bg-primary text-white shadow-xs' 
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
 
@@ -460,7 +506,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
       {/* View Content */}
       <div className="px-4 md:px-8 h-full max-w-[1600px] mx-auto">
-        {viewMode === 'list' ? (
+        {viewMode === 'heatmap' ? (
+             <PriceHeatmap onPropertySelect={handlePropertyClick} />
+        ) : viewMode === 'list' ? (
              /* LIST VIEW */
             filteredProperties.length === 0 ? (
                 <div className="text-center py-20 flex flex-col items-center">
@@ -477,7 +525,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 pb-24">
                     {filteredProperties.map(property => (
                         <div key={property.id} className="h-full">
                             <PropertyCard 
@@ -507,15 +555,34 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                     zoomControl={false}
                 >
                     <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                     />
                     
                     {/* Auto-Zoom to Pins */}
                     <MapUpdater properties={filteredProperties} />
                     
                     {/* Locate Me Control */}
-                    <LocateControl />
+                    {/* Map Overlay Controls - Elegant Chips */}
+                    <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[400] w-full max-w-2xl px-4">
+                        <div className="bg-white/90 backdrop-blur-xl p-2 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-white/20 flex items-center justify-center gap-3 overflow-x-auto no-scrollbar">
+                            {['Restaurants', 'Schools', 'Hospitals', 'Parks', 'Banks'].map((place) => (
+                                <button 
+                                    key={place}
+                                    className="px-6 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 hover:bg-primary hover:text-white transition-all whitespace-nowrap flex items-center gap-2"
+                                >
+                                    {place === 'Restaurants' && <GlassWater size={14} strokeWidth={1.5} />}
+                                    {place === 'Schools' && <Briefcase size={14} strokeWidth={1.5} />}
+                                    {place === 'Hospitals' && <Check size={14} strokeWidth={1.5} />}
+                                    {place === 'Parks' && <Waves size={14} strokeWidth={1.5} />}
+                                    {place === 'Banks' && <DollarSign size={14} strokeWidth={1.5} />}
+                                    {place}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+            
+            <LocateControl />
 
                     {/* Property Pins */}
                     {filteredProperties.filter(p => p.coordinates).map(p => {

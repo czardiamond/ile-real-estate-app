@@ -122,7 +122,7 @@ const RentPaymentModal: React.FC<RentPaymentModalProps> = ({ property, onClose }
                         </div>
                         
                         <div className="mt-8 bg-gray-50 p-3 rounded-xl flex items-center justify-center gap-2 text-xs text-gray-500 border border-gray-100">
-                            <Lock size={12} className="text-primary" /> End-to-End Encryption with Ilé AI Guardian
+                            <Lock size={12} className="text-primary" /> End-to-End Encryption with Ilé Guardian
                         </div>
                     </div>
                 )}
