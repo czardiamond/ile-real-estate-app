@@ -1,0 +1,6 @@
+/* Global styles for Ilé Real Estate */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+}
