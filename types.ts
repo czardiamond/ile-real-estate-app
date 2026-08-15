@@ -61,7 +61,7 @@ export enum FloodRisk {
 export interface VerificationData {
   status: VerificationStatus;
   nin_token?: string; // vNIN (16 chars)
-  id_type?: 'NATIONAL_ID' | 'VOTERS_CARD' | 'PASSPORT';
+  id_type?: 'NATIONAL_ID' | 'VOTERS_CARD' | 'PASSPORT' | 'CAC_REGISTRATION';
   face_match_score?: number;
   verified_at?: string;
   lasera_id?: string; // Lagos State Real Estate Regulatory Authority
@@ -198,9 +198,15 @@ export interface Property {
   
   // Virtual Experience
   virtualTourUrl?: string; // Matterport or similar URL
+  floorPlanUrl?: string;
   floorPlanImages?: string[];
 
+  ownerId?: string;
+  propertyType?: string;
+  imageUrls?: string[];
+  verificationStatus?: 'Pending' | 'Verified' | 'Rejected' | string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Lead {
@@ -210,6 +216,7 @@ export interface Lead {
   email: string;
   propertyId: string;
   budget: number;
+  value?: number;
   status: LeadStatus;
   notes: string;
   createdAt: string;
@@ -222,6 +229,7 @@ export interface SmartListingResponse {
   price: number;
   currency: string;
   location: {
+    address?: string;
     area: string;
     state: string;
   };

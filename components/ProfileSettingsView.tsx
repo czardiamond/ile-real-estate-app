@@ -16,11 +16,21 @@ interface ProfileSettingsViewProps {
   onVerifyClick: () => void;
   onTabChange: (tab: string) => void;
   onUserUpdate?: (updatedUser: User) => void;
+  onOpenLandTitleUpload?: () => void;
+  onOpenAdminPanel?: () => void;
 }
 
 type SubView = 'main' | 'personal-info' | 'about' | 'privacy' | 'notifications';
 
-const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogout, onVerifyClick, onTabChange, onUserUpdate }) => {
+const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ 
+  user, 
+  onLogout, 
+  onVerifyClick, 
+  onTabChange, 
+  onUserUpdate,
+  onOpenLandTitleUpload,
+  onOpenAdminPanel
+}) => {
   const [currentView, setCurrentView] = useState<SubView>('main');
   const [currentUserData, setCurrentUserData] = useState<User>(user);
   const [isSaving, setIsSaving] = useState(false);
@@ -380,7 +390,7 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
 
         {/* Section: Tools */}
         <div>
-          <h3 className="px-2 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Tools</h3>
+          <h3 className="px-2 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Tools & Verification</h3>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
              <MenuItem 
                 icon={MessageSquare} 
@@ -388,6 +398,22 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ user, onLogou
                 subLabel="Chat with your AI copilot"
                 onClick={() => onTabChange('chat')} 
             />
+            {onOpenLandTitleUpload && (
+              <MenuItem 
+                  icon={FileText} 
+                  label="Upload Land Title Document" 
+                  subLabel="Submit C of O, Gov Consent or Gazette for verification"
+                  onClick={onOpenLandTitleUpload} 
+              />
+            )}
+            {onOpenAdminPanel && (
+              <MenuItem 
+                  icon={CheckCircle} 
+                  label="Admin Verification Console" 
+                  subLabel="Review and approve pending land titles"
+                  onClick={onOpenAdminPanel} 
+              />
+            )}
           </div>
         </div>
 

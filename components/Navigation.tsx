@@ -16,9 +16,11 @@ interface NavigationProps {
   onOpenWhatsAppHub?: () => void;
   onOpenIleWalkthrough?: () => void;
   onOpenQASuite?: () => void;
+  onOpenLandTitleUpload?: () => void;
+  onOpenAdminPanel?: () => void;
 }
 
-const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabChange, isDarkMode = false, onToggleTheme, user, onOpenWhatsAppHub, onOpenIleWalkthrough, onOpenQASuite }) => {
+const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabChange, isDarkMode = false, onToggleTheme, user, onOpenWhatsAppHub, onOpenIleWalkthrough, onOpenQASuite, onOpenLandTitleUpload, onOpenAdminPanel }) => {
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(true);
   const [showSyncInfo, setShowSyncInfo] = useState<boolean>(false);
 
@@ -110,6 +112,28 @@ const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabCh
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenLandTitleUpload && (
+            <button
+              onClick={onOpenLandTitleUpload}
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-xs font-bold transition-all shadow-sm cursor-pointer"
+              title="Upload Land Title Document"
+            >
+              <FileSpreadsheet size={13} className="text-emerald-600 dark:text-emerald-400" />
+              <span className="text-[11px] font-bold">Title</span>
+            </button>
+          )}
+
+          {onOpenAdminPanel && (
+            <button
+              onClick={onOpenAdminPanel}
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-300 text-xs font-bold transition-all shadow-sm cursor-pointer"
+              title="Admin Title Verification Console"
+            >
+              <CheckCircle2 size={13} className="text-amber-600 dark:text-amber-400" />
+              <span className="text-[11px] font-bold">Admin</span>
+            </button>
+          )}
+
           {onOpenQASuite && (
             <button
               onClick={onOpenQASuite}
@@ -197,6 +221,28 @@ const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabCh
           ))}
         </div>
         <div className="flex items-center gap-3">
+          {onOpenLandTitleUpload && (
+            <button
+              onClick={onOpenLandTitleUpload}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:hover:bg-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold transition-all shadow-sm cursor-pointer hover:scale-105 active:scale-95"
+              title="Upload Land Title Document"
+            >
+              <FileSpreadsheet size={15} className="text-emerald-600 dark:text-emerald-400" />
+              <span>Upload Title</span>
+            </button>
+          )}
+
+          {onOpenAdminPanel && (
+            <button
+              onClick={onOpenAdminPanel}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-amber-100 hover:bg-amber-200 dark:bg-amber-950 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-200 text-xs font-bold transition-all shadow-sm cursor-pointer hover:scale-105 active:scale-95 border border-amber-300/40"
+              title="Admin Title Verification Console"
+            >
+              <CheckCircle2 size={15} className="text-amber-600 dark:text-amber-400" />
+              <span>Admin Console</span>
+            </button>
+          )}
+
           {onOpenQASuite && (
             <button
               onClick={onOpenQASuite}

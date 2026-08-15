@@ -25,6 +25,7 @@ L.Marker.prototype.options.icon = L.icon({
 });
 
 interface ExploreViewProps {
+  properties?: Property[];
   onPropertySelect: (property: Property) => void;
   onChat: (property: Property) => void;
   onView3D: (property: Property) => void;
@@ -85,6 +86,7 @@ const LocateControl = () => {
 };
 
 const ExploreView: React.FC<ExploreViewProps> = ({ 
+    properties,
     onPropertySelect, 
     onChat, 
     onView3D, 
@@ -137,8 +139,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       return Object.values(PropertyType);
   }, [activeCategory]);
 
+  const sourceProperties = useMemo(() => {
+    return properties && properties.length > 0 ? properties : MOCK_PROPERTIES;
+  }, [properties]);
+
   const filteredProperties = useMemo(() => {
-    let result = MOCK_PROPERTIES.filter(p => {
+    let result = sourceProperties.filter(p => {
       // 1. Search Term
       const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                             p.location.area.toLowerCase().includes(searchTerm.toLowerCase()) ||

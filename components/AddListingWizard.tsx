@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { SmartListingResponse, TitleDocument, VerificationStatus } from '../types';
 import { generateListingFromRawText, processVoiceNoteToListing, transcribeAudioToDescription } from '../services/geminiService';
-import { Sparkles, ArrowRight, Mic, MicOff, CheckCircle, AlertCircle, Loader2, Image as ImageIcon, Trash2, Plus, X, Video, FileText, MapPin, AlertTriangle, Check, LayoutGrid, Coffee, Shield, Radio, Volume2, FileEdit, Building2, DollarSign, Sliders, CheckSquare } from 'lucide-react';
+import { Sparkles, ArrowRight, Mic, MicOff, CheckCircle, AlertCircle, Loader2, Image as ImageIcon, Trash2, Plus, X, Video, FileText, MapPin, AlertTriangle, Check, LayoutGrid, Coffee, Shield, Radio, Volume2, FileEdit, Building2, DollarSign, Sliders, CheckSquare, LayoutTemplate } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 

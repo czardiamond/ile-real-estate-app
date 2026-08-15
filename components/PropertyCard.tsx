@@ -149,8 +149,16 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
         {renderPropertyMedia()}
         
         {/* Floating Tag */}
-        <div className={`absolute top-4 left-4 bg-white/80 backdrop-blur-md rounded-full font-bold text-on-surface shadow-sm transition-all z-10 ${compact ? 'px-3 py-1 text-[10px]' : 'px-4 py-2 text-xs uppercase tracking-widest'}`}>
-            {property.type}
+        <div className="flex items-center gap-1.5 absolute top-4 left-4 z-10">
+          <div className={`bg-white/90 backdrop-blur-md rounded-full font-bold text-on-surface shadow-sm transition-all ${compact ? 'px-2.5 py-0.5 text-[10px]' : 'px-3.5 py-1.5 text-xs uppercase tracking-widest'}`}>
+              {property.type}
+          </div>
+          {property.isVerified && (
+            <div className={`bg-emerald-600 text-white rounded-full font-bold shadow-sm flex items-center gap-1 ${compact ? 'px-2 py-0.5 text-[9px]' : 'px-2.5 py-1 text-[11px]'}`} title="Verified Land Title & Seller">
+              <ShieldCheck size={compact ? 10 : 13} />
+              <span>Verified</span>
+            </div>
+          )}
         </div>
 
         {/* Favorite Button */}

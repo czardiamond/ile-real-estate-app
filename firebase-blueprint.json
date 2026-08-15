@@ -80,6 +80,25 @@
         "timestamp": { "type": "string" }
       },
       "required": ["userId", "chatType", "role", "text", "timestamp"]
+    },
+    "verifications": {
+      "title": "Verification",
+      "description": "Land title and property legal document verification record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "documentType": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "storageUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "number" },
+        "fileType": { "type": "string" },
+        "status": { "type": "string" },
+        "uploadedAt": { "type": "string" }
+      },
+      "required": ["propertyId", "ownerUid", "documentType", "storageUrl", "status", "uploadedAt"]
     }
   }
 }

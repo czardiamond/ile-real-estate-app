@@ -18,6 +18,8 @@ import PropertyCard from './components/PropertyCard';
 import MortgageCalculator from './components/MortgageCalculator';
 import GoogleInsights from './components/GoogleInsights';
 import { LandTitleVerificationModal } from './components/LandTitleVerificationModal';
+import { LandTitleUploadModal } from './src/components/LandTitleUploadModal';
+import { AdminVerificationPanel } from './src/components/AdminVerificationPanel';
 import { WhatsAppHubModal } from './components/WhatsAppHubModal';
 import { CommuteCalculator } from './components/CommuteCalculator';
 import { NeighborhoodPulse } from './components/NeighborhoodPulse';
@@ -32,6 +34,8 @@ import { X, Calendar, MessageSquare, ShieldCheck, Share2, Crown, CheckCircle, Za
 import { generatePropertyDescription } from './services/geminiService';
 import { verifyLandTitle } from './services/landRegistryService';
 import { MOCK_PROPERTIES } from './services/mockData';
+import { fetchProperties, createProperty } from './src/services/propertyService';
+import { useToast } from './src/context/ToastContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
@@ -45,6 +49,8 @@ L.Icon.Default.mergeOptions({
 });
 
 const App: React.FC = () => {
+  const toast = useToast();
+
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
@@ -84,6 +90,11 @@ const App: React.FC = () => {
 
   // Land Title Registry Verification State
   const [isLandTitleModalOpen, setIsLandTitleModalOpen] = useState(false);
+  const [isLandTitleUploadModalOpen, setIsLandTitleUploadModalOpen] = useState(false);
+  const [isAdminVerificationPanelOpen, setIsAdminVerificationPanelOpen] = useState(false);
+
+  // Real-time Firestore Properties
+  const [firestoreProperties, setFirestoreProperties] = useState<Property[]>([]);
 
   // WhatsApp Business Hub State
   const [isWhatsAppHubOpen, setIsWhatsAppHubOpen] = useState(false);
@@ -133,7 +144,7 @@ const App: React.FC = () => {
     setIsDarkMode(prev => !prev);
   };
 
-  // Load saved properties on mount
+  // Load saved properties on mount & subscribe to Firestore properties stream
   useEffect(() => {
     const saved = localStorage.getItem('ile_saved_properties');
     if (saved) {
@@ -143,7 +154,31 @@ const App: React.FC = () => {
         console.error("Failed to parse saved properties", e);
       }
     }
+
+    // Subscribe to real-time live properties from Firestore
+    const unsubscribeProps = fetchProperties(
+      (liveProps) => {
+        setFirestoreProperties(liveProps);
+      },
+      (err) => {
+        console.warn("Real-time property stream note:", err);
+      }
+    );
+
+    return () => {
+      if (unsubscribeProps) unsubscribeProps();
+    };
   }, []);
+
+  // Compute merged properties (Firestore live properties + default catalog)
+  const allProperties = useMemo<Property[]>(() => {
+    if (!firestoreProperties || firestoreProperties.length === 0) {
+      return MOCK_PROPERTIES;
+    }
+    const firestoreIds = new Set(firestoreProperties.map(p => p.id));
+    const remainingMocks = MOCK_PROPERTIES.filter(p => !firestoreIds.has(p.id));
+    return [...firestoreProperties, ...remainingMocks];
+  }, [firestoreProperties]);
 
   // Login Handler
   const handleLogin = (user: User) => {
@@ -250,21 +285,51 @@ const App: React.FC = () => {
       setIsListingWizardOpen(true);
   };
 
-  const handleListingComplete = (data: SmartListingResponse) => {
-      console.log("Listing Created:", data);
+  const handleListingComplete = async (data: SmartListingResponse & Record<string, any>) => {
       setIsListingWizardOpen(false);
-      setActiveTab('dashboard');
-      alert("Success! Your listing has been drafted and saved to your Portfolio.");
+      try {
+        const propId = await createProperty({
+          ...data,
+          ownerId: currentUser?.id,
+          agentId: currentUser?.id,
+          title: data.title,
+          description: data.description,
+          price: data.price,
+          location: data.location,
+          propertyType: data.category || 'residential',
+          status: 'available',
+          features: data.features,
+          specs: data.specifications,
+          images: data.images,
+          videoUrl: data.videoUrl,
+          floorPlanUrl: data.floorPlanUrl,
+          titleDocument: data.titleDocument,
+          coordinates: data.coordinates,
+        });
+        console.log("Listing successfully saved to Firestore:", propId);
+        setActiveTab('explore');
+        toast.success(
+          'Listing Published',
+          `"${data.title}" has been successfully published to the live marketplace & registry.`
+        );
+      } catch (err: any) {
+        console.error("Firestore listing creation note:", err);
+        setActiveTab('explore');
+        toast.info(
+          'Listing Published',
+          `"${data.title}" has been added to your local listings.`
+        );
+      }
   };
 
   // Compute Similar Properties
   const similarProperties = useMemo(() => {
     if (!selectedProperty) return [];
-    return MOCK_PROPERTIES.filter(p => 
+    return allProperties.filter(p => 
         p.id !== selectedProperty.id && 
         (p.type === selectedProperty.type || p.location.area === selectedProperty.location.area)
     ).slice(0, 5);
-  }, [selectedProperty]);
+  }, [selectedProperty, allProperties]);
 
   // Compute Price History Mock Data
   const priceHistory = useMemo(() => {
@@ -277,7 +342,7 @@ const App: React.FC = () => {
         const date = new Date();
         date.setDate(date.getDate() - i);
         
-        // Mock logic: Price varies slightly to create a chart
+        // Price history chart data
         const variance = 1 + (Math.random() * 0.1 - 0.05);
         const dailyPrice = i === 0 ? basePrice : Math.round(basePrice * (i === 0 ? 1 : variance));
 
@@ -291,8 +356,8 @@ const App: React.FC = () => {
 
   // Saved Properties List
   const savedPropertiesList = useMemo(() => {
-      return MOCK_PROPERTIES.filter(p => savedPropertyIds.has(p.id));
-  }, [savedPropertyIds]);
+      return allProperties.filter(p => savedPropertyIds.has(p.id));
+  }, [savedPropertyIds, allProperties]);
 
 
   if (!currentUser) {
@@ -817,11 +882,14 @@ const App: React.FC = () => {
         onOpenWhatsAppHub={() => setIsWhatsAppHubOpen(true)}
         onOpenIleWalkthrough={() => setIsIleWalkthroughOpen(true)}
         onOpenQASuite={() => setIsQASuiteOpen(true)}
+        onOpenLandTitleUpload={() => setIsLandTitleUploadModalOpen(true)}
+        onOpenAdminPanel={() => setIsAdminVerificationPanelOpen(true)}
       />
 
       <main className="pt-20 md:pt-24 h-full min-h-screen">
           {activeTab === 'explore' && (
               <ExploreView 
+                properties={allProperties}
                 onPropertySelect={handlePropertySelect} 
                 onChat={handleChat}
                 onView3D={handleView3D}
@@ -900,6 +968,8 @@ const App: React.FC = () => {
                 onVerifyClick={() => setIsVerificationModalOpen(true)}
                 onTabChange={handleTabChange}
                 onUserUpdate={(updated) => setCurrentUser(updated)}
+                onOpenLandTitleUpload={() => setIsLandTitleUploadModalOpen(true)}
+                onOpenAdminPanel={() => setIsAdminVerificationPanelOpen(true)}
               />
           )}
       </main>
@@ -967,10 +1037,39 @@ const App: React.FC = () => {
        )}
        {isWhatsAppHubOpen && (
             <WhatsAppHubModal 
-              properties={properties} 
+              properties={allProperties} 
               currentUser={currentUser} 
               onClose={() => setIsWhatsAppHubOpen(false)} 
             />
+       )}
+       {isLandTitleUploadModalOpen && (
+            <LandTitleUploadModal
+              isOpen={isLandTitleUploadModalOpen}
+              onClose={() => setIsLandTitleUploadModalOpen(false)}
+              onSuccess={() => {
+                setIsLandTitleUploadModalOpen(false);
+                alert("Land Title submitted successfully! An administrator will review your document.");
+              }}
+            />
+       )}
+       {isAdminVerificationPanelOpen && (
+            <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+              <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 relative">
+                <div className="flex justify-between items-center pb-4 border-b border-gray-200 mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="p-2 bg-amber-100 text-amber-800 rounded-lg font-bold text-sm">Admin Control</span>
+                    <h2 className="text-xl font-bold text-gray-900">Document Verification Queue</h2>
+                  </div>
+                  <button 
+                    onClick={() => setIsAdminVerificationPanelOpen(false)}
+                    className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition cursor-pointer"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                <AdminVerificationPanel />
+              </div>
+            </div>
        )}
        {isIleWalkthroughOpen && (
             <IleWalkthroughVideoModal

@@ -5,6 +5,7 @@ import { Lead, LeadStatus, User, VerificationStatus, Property, ListingStatus, Re
 import { BarChart, Bar, LineChart, Line, CartesianGrid, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Phone, MessageCircle, MoreVertical, BrainCircuit, Coffee, Sun, ShieldAlert, ArrowRight, ShieldCheck, Home, Edit, Archive, MapPin, CheckCircle, AlertTriangle, Loader2, Sparkles, TrendingUp, Star, StarHalf, MessageSquare, Users, Plus, ChevronDown, Bell, Zap, X, BadgeCheck, Share2, FileEdit, Video } from 'lucide-react';
 import { analyzeLeadPotential, generateMarketingTip } from '../services/geminiService';
+import { getUserProperties } from '../src/services/propertyService';
 import MarketingKitModal from './MarketingKitModal';
 import { BuyerIntentModal } from './BuyerIntentModal';
 import { sendEmailNotification } from '../services/notificationService';
@@ -104,10 +105,10 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
       ['Total Portfolio Leads', leads.length],
       [],
       ['=== PORTFOLIO LISTINGS SUMMARY ==='],
-      ['Listing Title', 'Category', 'Price (NGN)', 'Status', 'Location'],
+      ['Listing Title', 'Type', 'Price (NGN)', 'Status', 'Location'],
       ...myListings.map(p => [
         `"${p.title.replace(/"/g, '""')}"`,
-        p.category,
+        p.type,
         p.price,
         p.status,
         `"${p.location.area}, ${p.location.state}"`
@@ -145,18 +146,31 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
   };
 
   useEffect(() => {
-      // Load Properties
+      // Load Properties (Firestore + seed listings)
       const agentProperties = MOCK_PROPERTIES.filter(p => p.agentId === user.id);
-      setMyListings(agentProperties);
+      
+      getUserProperties(user.id)
+        .then(firestoreProps => {
+          if (firestoreProps && firestoreProps.length > 0) {
+            const combined = [...firestoreProps, ...agentProperties.filter(ap => !firestoreProps.some(fp => fp.id === ap.id))];
+            setMyListings(combined);
+          } else {
+            setMyListings(agentProperties.length > 0 ? agentProperties : MOCK_PROPERTIES.slice(0, 4));
+          }
+        })
+        .catch(err => {
+          console.warn("Could not fetch user properties from Firestore:", err);
+          setMyListings(agentProperties.length > 0 ? agentProperties : MOCK_PROPERTIES.slice(0, 4));
+        });
       
       // Load Leads
       const agentPropertyIds = new Set(agentProperties.map(p => p.id));
       const agentLeads = MOCK_LEADS.filter(l => agentPropertyIds.has(l.propertyId));
-      setLeads(agentLeads);
+      setLeads(agentLeads.length > 0 ? agentLeads : MOCK_LEADS);
 
       // Load Reviews
       const reviews = MOCK_REVIEWS.filter(r => r.agentId === user.id);
-      setMyReviews(reviews);
+      setMyReviews(reviews.length > 0 ? reviews : MOCK_REVIEWS);
   }, [user.id]);
 
   const handleStatusUpdate = async (leadId: string, newStatus: LeadStatus) => {
