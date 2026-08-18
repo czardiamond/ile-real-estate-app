@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, NetworkRank, UserRole, VerificationStatus } from '../types';
-import { getAgentsByAgency, updateUserPermissions } from '../services/authService';
+import { getAgentsByAgency, updateUserPermissions } from '../services/firebase';
 import { MOCK_PROPERTIES } from '../services/mockData';
 import { Users, Briefcase, TrendingUp, Building2, Plus, Search, MoreVertical, Award, BadgeCheck, AlertTriangle, Settings, Mail, X, Shield, Lock, Power, ChevronDown, Check, UserCog, UserPlus } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -30,8 +30,11 @@ const BrokerageView: React.FC<BrokerageViewProps> = ({ user }) => {
 
   useEffect(() => {
     if (user.agencyName) {
-      const companyAgents = getAgentsByAgency(user.agencyName);
-      setAgents(companyAgents);
+      getAgentsByAgency(user.agencyName).then(companyAgents => {
+        setAgents(companyAgents);
+      }).catch(err => {
+        console.warn('Error fetching agency agents:', err);
+      });
     }
   }, [user.agencyName]);
 

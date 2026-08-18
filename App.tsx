@@ -4,7 +4,9 @@ import Navigation from './components/Navigation';
 import ExploreView from './components/ExploreView';
 import AgentDashboard from './components/AgentDashboard';
 import AIChat from './components/AIChat';
-import AuthScreen from './components/AuthScreen';
+import AuthScreen from './src/components/AuthScreen';
+import { useAuth } from './src/context/AuthContext';
+import { saveUserProfileToFirestore, getUserProfileFromFirestore } from './services/firebase';
 import AddListingWizard from './components/AddListingWizard';
 import VerificationModal from './components/VerificationModal';
 import LegalGenerator from './components/LegalGenerator';
@@ -29,11 +31,10 @@ import { AcademyView } from './components/AcademyView';
 import { IleWalkthroughVideoModal } from './components/IleWalkthroughVideoModal';
 import { QATestingSuiteModal } from './components/QATestingSuiteModal';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserRole, Property, User, SmartListingResponse, VerificationData, FloodRisk, TitleDocument, VerificationStatus } from './types';
+import { UserRole, Property, User, SmartListingResponse, VerificationData, FloodRisk, TitleDocument, VerificationStatus, NetworkRank } from './types';
 import { X, Calendar, MessageSquare, ShieldCheck, Share2, Crown, CheckCircle, Zap, Droplets, Waves, Lock, Video, FileText, MapPin, Sparkles, TrendingUp, ChevronLeft, Box, LayoutTemplate, Loader2, Play, CreditCard, Check, AlertTriangle, ExternalLink, Heart, Ghost, Calculator, Presentation } from 'lucide-react';
 import { generatePropertyDescription } from './services/geminiService';
 import { verifyLandTitle } from './services/landRegistryService';
-import { MOCK_PROPERTIES } from './services/mockData';
 import { fetchProperties, createProperty } from './src/services/propertyService';
 import { useToast } from './src/context/ToastContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -50,9 +51,11 @@ L.Icon.Default.mergeOptions({
 
 const App: React.FC = () => {
   const toast = useToast();
+  const { user: fbUser, loading: authLoading, logout } = useAuth();
 
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState<boolean>(true);
   
   // Navigation State
   const [activeTab, setActiveTab] = useState('explore');
@@ -170,44 +173,109 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Compute merged properties (Firestore live properties + default catalog)
   const allProperties = useMemo<Property[]>(() => {
-    if (!firestoreProperties || firestoreProperties.length === 0) {
-      return MOCK_PROPERTIES;
-    }
-    const firestoreIds = new Set(firestoreProperties.map(p => p.id));
-    const remainingMocks = MOCK_PROPERTIES.filter(p => !firestoreIds.has(p.id));
-    return [...firestoreProperties, ...remainingMocks];
+    return firestoreProperties || [];
   }, [firestoreProperties]);
 
-  // Login Handler
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    // Route based on role
-    if (user.role === UserRole.BROKERAGE) {
-        setActiveTab('brokerage-dashboard');
-    } else if (user.role === UserRole.AGENT) {
-        setActiveTab('dashboard'); // Veranda
-    } else {
-        setActiveTab('explore');
-    }
-  };
+  // Sync Firebase Auth user with Firestore user profile
+  useEffect(() => {
+    let isMounted = true;
 
-  const handleLogout = () => {
+    async function syncUserProfile() {
+      if (!fbUser) {
+        if (isMounted) {
+          setCurrentUser(null);
+          setIsProfileLoading(false);
+        }
+        return;
+      }
+
+      setIsProfileLoading(true);
+      try {
+        let profile = await getUserProfileFromFirestore(fbUser.uid);
+
+        if (!profile) {
+          // New User signup: provision initial profile
+          const pendingRoleStr = localStorage.getItem('ile_pending_signup_role');
+          const role = (pendingRoleStr && Object.values(UserRole).includes(pendingRoleStr as UserRole))
+            ? (pendingRoleStr as UserRole)
+            : UserRole.PUBLIC;
+          localStorage.removeItem('ile_pending_signup_role');
+
+          const defaultName = fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'Ilé User');
+          
+          const newProfile: User = {
+            id: fbUser.uid,
+            name: defaultName,
+            email: fbUser.email || '',
+            phone: fbUser.phoneNumber || '',
+            role: role,
+            avatarUrl: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(defaultName)}&background=0D9488&color=fff`,
+            verified: false,
+            verification: {
+              status: VerificationStatus.UNVERIFIED
+            },
+            referralCode: `ILE${Math.floor(100000 + Math.random() * 900000)}`,
+            networkRank: NetworkRank.SCOUT,
+            downlineCount: 0,
+            wallet: {
+              balance: 0,
+              lifetimeEarnings: 0,
+              pendingClearance: 0
+            },
+            isActive: true
+          };
+
+          await saveUserProfileToFirestore(newProfile);
+          profile = newProfile;
+        }
+
+        if (isMounted) {
+          setCurrentUser(profile);
+          setIsProfileLoading(false);
+          // Initial routing based on role
+          if (profile.role === UserRole.BROKERAGE) {
+            setActiveTab('brokerage-dashboard');
+          } else if (profile.role === UserRole.AGENT) {
+            setActiveTab('dashboard');
+          }
+        }
+      } catch (err) {
+        console.error("Error syncing profile with Firestore:", err);
+        if (isMounted) {
+          setIsProfileLoading(false);
+        }
+      }
+    }
+
+    syncUserProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fbUser]);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (err) {
+      console.warn("Logout error:", err);
+    }
     setCurrentUser(null);
     setActiveTab('explore');
     setSelectedProperty(null);
   };
 
-  const handleVerificationSuccess = (data: VerificationData) => {
-      if (currentUser) {
-          const updatedUser: User = {
-              ...currentUser,
-              verified: true,
-              verification: data
-          };
-          setCurrentUser(updatedUser);
-      }
+  const handleVerificationSuccess = async (data: VerificationData) => {
+    if (currentUser) {
+      const updatedUser: User = {
+        ...currentUser,
+        verified: data.status === VerificationStatus.VERIFIED,
+        verification: data
+      };
+      setCurrentUser(updatedUser);
+      await saveUserProfileToFirestore(updatedUser);
+    }
   };
 
   const handleToggleSave = (propertyId: string) => {
@@ -360,8 +428,22 @@ const App: React.FC = () => {
   }, [savedPropertyIds, allProperties]);
 
 
+  if (authLoading || (fbUser && isProfileLoading)) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white font-sans">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-xl shadow-emerald-500/20 mb-4 animate-pulse">
+          <ShieldCheck className="w-8 h-8 text-slate-950 stroke-[2.5]" />
+        </div>
+        <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm tracking-wide">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Synchronizing Ilé Real Estate session...</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser) {
-    return <AuthScreen onLogin={handleLogin} />;
+    return <AuthScreen />;
   }
 
   // --- RENDER PROPERTY DETAILS OVERLAY ---

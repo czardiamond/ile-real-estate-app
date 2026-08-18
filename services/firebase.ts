@@ -1,17 +1,8 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, addDoc, orderBy, limit } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import { db } from '../src/lib/firebase';
+import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, addDoc, orderBy, limit } from 'firebase/firestore';
 import type { User } from '../types';
 
-// Lazy initialize Firebase
-let app;
-if (!getApps().length) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApp();
-}
-
-export const db = getFirestore(app);
+export { db };
 
 export interface PropertyAlertPreference {
   id?: string;
@@ -259,3 +250,40 @@ export async function removePropertyAlertPreference(userId: string, propertyId: 
   localStorage.setItem('ile_property_alerts', JSON.stringify(stored));
   return true;
 }
+
+/**
+ * Fetches all agents under a specific brokerage/agency
+ */
+export async function getAgentsByAgency(agencyName: string): Promise<User[]> {
+  try {
+    const colRef = collection(db, USERS_COLLECTION);
+    const q = query(colRef, where('agencyName', '==', agencyName));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const agents: User[] = [];
+      snap.forEach(d => agents.push(d.data() as User));
+      return agents;
+    }
+  } catch (err) {
+    console.warn('Firestore fetch agents note:', err);
+  }
+  return [];
+}
+
+/**
+ * Updates agent permissions within a brokerage
+ */
+export async function updateUserPermissions(
+  userId: string,
+  updates: { brokerageRole?: 'Standard' | 'Manager'; isActive?: boolean }
+): Promise<boolean> {
+  try {
+    const userRef = doc(db, USERS_COLLECTION, userId);
+    await setDoc(userRef, { ...updates, updatedAt: new Date().toISOString() }, { merge: true });
+    return true;
+  } catch (err) {
+    console.warn('Firestore update agent permissions note:', err);
+    return false;
+  }
+}
+

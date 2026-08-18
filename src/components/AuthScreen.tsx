@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { UserRole } from "../../types";
 import {
   ShieldCheck,
   Mail,
@@ -13,6 +14,8 @@ import {
   Sparkles,
   ArrowRight,
   Loader2,
+  Briefcase,
+  Home,
 } from "lucide-react";
 
 interface AuthScreenProps {
@@ -34,6 +37,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onClose }) =>
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.PUBLIC);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -87,6 +91,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onClose }) =>
         await signInWithEmail(email, password);
         setSuccessMessage("Welcome back to Ilé!");
       } else {
+        localStorage.setItem("ile_pending_signup_role", selectedRole);
         await signUpWithEmail(email, password, fullName);
         setSuccessMessage("Account created successfully! Welcome to Ilé.");
       }
@@ -96,7 +101,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onClose }) =>
         }, 800);
       }
     } catch (err: any) {
-      // AuthContext handles setting authError or throwing readable error
       setLocalError(err?.message || "Authentication failed. Please check your credentials.");
     } finally {
       setSubmitting(false);
@@ -109,6 +113,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onClose }) =>
     clearError();
     setSubmitting(true);
     try {
+      if (mode === "signup") {
+        localStorage.setItem("ile_pending_signup_role", selectedRole);
+      }
       await signInWithGoogle();
       setSuccessMessage("Signed in with Google successfully!");
       if (onSuccess) {
@@ -150,7 +157,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onClose }) =>
           <p className="text-slate-400 text-sm mt-2 font-medium">
             {mode === "signin"
               ? "Access your verified property portfolio & escrow insights"
-              : "Create your investor or homeowner account in seconds"}
+              : "Create your investor, agent or homeowner account in seconds"}
           </p>
         </div>
 
@@ -199,25 +206,72 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onClose }) =>
         {/* Form */}
         <form onSubmit={handleEmailAuth} className="space-y-4">
           {mode === "signup" && (
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                Full Name
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                  <UserIcon className="w-4 h-4" />
+            <>
+              {/* Account Role Selector */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                  Account Type
+                </label>
+                <div className="grid grid-cols-3 gap-2 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRole(UserRole.PUBLIC)}
+                    className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                      selectedRole === UserRole.PUBLIC
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Home className="w-3.5 h-3.5" />
+                    <span>Seeker</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRole(UserRole.AGENT)}
+                    className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                      selectedRole === UserRole.AGENT
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Briefcase className="w-3.5 h-3.5" />
+                    <span>Agent</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRole(UserRole.BROKERAGE)}
+                    className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                      selectedRole === UserRole.BROKERAGE
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Brokerage</span>
+                  </button>
                 </div>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Babatunde Adeyemi"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  disabled={isBusy}
-                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-white placeholder-slate-500 text-sm rounded-xl pl-10 pr-4 py-3 outline-none transition-all disabled:opacity-60"
-                />
               </div>
-            </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                    <UserIcon className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Babatunde Adeyemi"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    disabled={isBusy}
+                    className="w-full bg-slate-950/60 border border-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-white placeholder-slate-500 text-sm rounded-xl pl-10 pr-4 py-3 outline-none transition-all disabled:opacity-60"
+                  />
+                </div>
+              </div>
+            </>
           )}
 
           <div>
@@ -245,11 +299,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onClose }) =>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
                 Password
               </label>
-              {mode === "signin" && (
-                <span className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer transition-colors">
-                  Forgot Password?
-                </span>
-              )}
             </div>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
@@ -313,7 +362,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onClose }) =>
           disabled={isBusy}
           className="w-full py-3 px-4 bg-slate-950 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 text-slate-200 hover:text-white font-semibold text-sm rounded-xl transition-all flex items-center justify-center gap-3 shadow-sm active:scale-[0.99] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {/* Official Google SVG Icon */}
           <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
             <path
               fill="#4285F4"
@@ -341,7 +389,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onClose }) =>
           <span>Protected by 256-bit Title Encryption & Firebase Security Rules</span>
         </div>
 
-        {/* Optional Close Button if rendered inside a modal */}
         {onClose && (
           <div className="mt-4 text-center">
             <button
