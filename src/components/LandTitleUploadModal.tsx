@@ -1,7 +1,7 @@
 // src/components/LandTitleUploadModal.tsx
 import React, { useState, useEffect } from 'react';
 import { auth, db, storage } from '../lib/firebase';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytesResumable, deleteObject } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getUserProperties, Property } from '../services/propertyService';
 import { useToast } from '../context/ToastContext';
@@ -85,10 +85,9 @@ export const LandTitleUploadModal: React.FC<LandTitleUploadModalProps> = ({
     setIsUploading(true);
     setErrorMessage('');
 
-    const fileExtension = file.name.split('.').pop();
+    const fileExtension = (file.name.split('.').pop() || 'bin').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
     const fileName = `title_${Date.now()}.${fileExtension}`;
-    const storageRef = ref(storage, `titles/${currentUser.uid}/${fileName}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    const uploadTask = uploadBytesResumable(ref(storage, `titles/${currentUser.uid}/${fileName}`), file);
 
     uploadTask.on(
       'state_changed',
@@ -107,12 +106,12 @@ export const LandTitleUploadModal: React.FC<LandTitleUploadModalProps> = ({
       },
       async () => {
         try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          const storagePath = uploadTask.snapshot.ref.fullPath;
 
           await addDoc(collection(db, 'verifications'), {
             userId: currentUser.uid,
             titleNumber: formattedTitle,
-            documentUrl: downloadURL,
+            storagePath,
             status: 'pending',
             ...(selectedPropertyId ? { propertyId: selectedPropertyId } : {}),
             createdAt: serverTimestamp(),

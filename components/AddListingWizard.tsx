@@ -44,6 +44,10 @@ const FEATURES_BY_TYPE = {
     EVENT: ['Changing Room', 'Stage', 'Lighting System', 'Sound System', 'Projector', 'Vendor Area', 'Cooling System'],
     LAND: ['Fenced', 'Gated', 'Dry Land', 'Survey Plan', 'Corner Piece', 'Access Road']
 };
+const ALLOWED_LISTING_FEATURES = new Set(Object.values(FEATURES_BY_TYPE).flat().concat([
+  'Backup Generator', 'Swimming Pool', '24/7 Security', 'Water Heater', 'Serviced', 'Prepaid Meter',
+  'Solar Powered', 'Ample Parking',
+]));
 
 const PROPERTY_TYPES_BY_CATEGORY = {
     RESIDENTIAL: ['Apartment', 'House', 'Duplex', 'Bungalow', 'Short-let', 'Guest House', 'Other'],
@@ -276,7 +280,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
     if (result) {
       setGeneratedData(result);
       setReviewDescription(result.description || '');
-      setSelectedFeatures(result.features || []);
+      setSelectedFeatures((result.features || []).filter(feature => ALLOWED_LISTING_FEATURES.has(feature)).slice(0, 5));
       setStep('review');
     } else {
       setStep('input');
@@ -330,7 +334,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
       setSelectedFeatures(prev => 
         prev.includes(feature) 
         ? prev.filter(f => f !== feature)
-        : [...prev, feature]
+        : prev.length < 5 ? [...prev, feature] : prev
       );
   };
 
@@ -736,7 +740,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
               {/* Amenities & Features */}
               <div className="border-t border-gray-100 pt-5 space-y-3">
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                      Features & Amenities
+                      Features & Amenities (choose up to 5)
                   </label>
                   <div className="flex flex-wrap gap-2">
                       {['POP Ceilings', 'Backup Generator', 'Swimming Pool', '24/7 Security', 'Water Heater', 'Fitted Kitchen', 'Serviced', 'Prepaid Meter', 'CCTV', 'Inverter', 'Solar Powered', 'Ample Parking'].map(feat => {
@@ -1034,7 +1038,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                       if (result) {
                         setGeneratedData(result);
                         setReviewDescription(result.description || '');
-                        setSelectedFeatures(result.features || []);
+                        setSelectedFeatures((result.features || []).filter(feature => ALLOWED_LISTING_FEATURES.has(feature)).slice(0, 5));
                         setStep('review');
                       } else {
                         setStep('input');

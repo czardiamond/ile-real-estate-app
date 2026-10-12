@@ -9,57 +9,73 @@ interface AIChatProps {
 }
 
 const AIChat: React.FC<AIChatProps> = ({ user }) => {
-  const userId = user?.id || 'guest_user';
+  const userId = user?.id || null;
   const [messages, setMessages] = useState<{role: string, text: string}[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeUserIdRef = useRef(userId);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
-    // Load conversation history from Firestore
+    let isCurrent = true;
+    activeUserIdRef.current = userId;
+    setMessages([]);
+    setInput('');
+    setIsTyping(false);
     setIsLoadingHistory(true);
+    if (!userId) {
+      setMessages([{ role: 'model', text: 'Sign in to start a private conversation with Ilé.' }]);
+      setIsLoadingHistory(false);
+      return () => { isCurrent = false; };
+    }
+
     getChatHistoryFromFirestore(userId, 'ile_ai').then(history => {
+      if (!isCurrent) return;
       if (history && history.length > 0) {
         setMessages(history.map(m => ({ role: m.role, text: m.text })));
       } else {
         const welcome = { role: 'model', text: 'Hello! I am Ilé, your AI real estate assistant. How can I help you find your perfect space today?' };
         setMessages([welcome]);
-        saveChatMessageToFirestore({ userId, chatType: 'ile_ai', role: 'model', text: welcome.text });
+        void saveChatMessageToFirestore({ userId, chatType: 'ile_ai', role: 'model', text: welcome.text });
       }
       setIsLoadingHistory(false);
     });
+    return () => { isCurrent = false; };
   }, [userId]);
 
   useEffect(scrollToBottom, [messages]);
 
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || !userId) return;
 
     const userMsgText = input;
+    const requestUserId = userId;
     const userMsg = { role: 'user', text: userMsgText };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
 
     // Save user message to Firestore
-    saveChatMessageToFirestore({ userId, chatType: 'ile_ai', role: 'user', text: userMsgText });
+    void saveChatMessageToFirestore({ userId, chatType: 'ile_ai', role: 'user', text: userMsgText });
 
     try {
       const responseText = await chatWithIle(messages, userMsgText);
+      if (activeUserIdRef.current !== requestUserId) return;
       setMessages(prev => [...prev, { role: 'model', text: responseText }]);
       // Save AI response to Firestore
-      saveChatMessageToFirestore({ userId, chatType: 'ile_ai', role: 'model', text: responseText });
+      void saveChatMessageToFirestore({ userId, chatType: 'ile_ai', role: 'model', text: responseText });
     } catch (error) {
+      if (activeUserIdRef.current !== requestUserId) return;
       const errText = "I'm having trouble connecting right now. Please try again.";
       setMessages(prev => [...prev, { role: 'model', text: errText }]);
-      saveChatMessageToFirestore({ userId, chatType: 'ile_ai', role: 'model', text: errText });
+      void saveChatMessageToFirestore({ userId, chatType: 'ile_ai', role: 'model', text: errText });
     } finally {
-      setIsTyping(false);
+      if (activeUserIdRef.current === requestUserId) setIsTyping(false);
     }
   };
 
@@ -82,7 +98,7 @@ const AIChat: React.FC<AIChatProps> = ({ user }) => {
 
         <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
           <CloudCheck size={14} className="text-emerald-600" />
-          <span>Firestore Synced</span>
+          <span>Private conversation</span>
         </div>
       </div>
 

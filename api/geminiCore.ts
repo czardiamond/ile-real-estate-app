@@ -377,8 +377,11 @@ export const analyzeBuyerIntentFromChatLogs = async (
     chatLogs: string
 ): Promise<BuyerIntentAnalysis> => {
     try {
+        const priceContext = propertyPrice > 0
+            ? `priced at ₦${propertyPrice.toLocaleString()}`
+            : 'with no listing price supplied';
         const prompt = `
-        Analyze the following real estate conversation log between buyer "${buyerName}" and the agent for property "${propertyTitle}" priced at ₦${propertyPrice.toLocaleString()}.
+        Analyze the following real estate conversation log between buyer "${buyerName}" and the agent for property "${propertyTitle}" ${priceContext}.
 
         CHAT LOG TRANSCRIPT:
         ${chatLogs}

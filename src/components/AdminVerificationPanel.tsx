@@ -1,8 +1,8 @@
 // src/components/AdminVerificationPanel.tsx
 import React, { useEffect, useState } from 'react';
-import { auth, db } from '../lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
-import { verifyProperty } from '../services/propertyService';
+import { auth, db, storage } from '../lib/firebase';
+import { collection, onSnapshot, doc, deleteField, query, orderBy, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getBlob, ref as storageRef } from 'firebase/storage';
 import { useToast } from '../context/ToastContext';
 
 export interface VerificationRecord {
@@ -10,7 +10,8 @@ export interface VerificationRecord {
   userId: string;
   propertyId?: string;
   titleNumber: string;
-  documentUrl: string;
+  storagePath?: string;
+  documentUrl?: string;
   status: 'pending' | 'approved' | 'rejected';
   createdAt?: any;
 }
@@ -20,6 +21,7 @@ export const AdminVerificationPanel: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const toast = useToast();
 
   useEffect(() => {
@@ -64,15 +66,33 @@ export const AdminVerificationPanel: React.FC = () => {
     try {
       setProcessingId(verification.id);
 
-      const verRef = doc(db, 'verifications', verification.id);
-      await updateDoc(verRef, { status: newStatus });
+      const reviewerId = auth.currentUser?.uid;
+      if (!reviewerId) throw new Error('Sign in with an administrator account to review documents.');
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'verifications', verification.id), { status: newStatus });
+
+      if (verification.propertyId) {
+        const approved = newStatus === 'approved';
+        const reviewFields = {
+          isVerified: approved,
+          verificationStatus: approved ? 'Verified' : 'Rejected',
+          verificationLevel: approved ? 'DOCUMENT_REVIEWED' : 'NONE',
+          verifiedAt: approved ? serverTimestamp() : deleteField(),
+          verifiedBy: approved ? reviewerId : deleteField(),
+          ...(approved ? {} : { rejectionReason: 'The submitted title document was rejected during Ilé review.' }),
+          updatedAt: serverTimestamp(),
+        };
+        batch.update(doc(db, 'properties', verification.propertyId), reviewFields);
+        batch.update(doc(db, 'public_listings', verification.propertyId), {
+          isVerified: approved,
+          verificationStatus: approved ? 'Verified' : 'Rejected',
+          verificationLevel: approved ? 'DOCUMENT_REVIEWED' : 'NONE',
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
 
       if (newStatus === 'approved') {
-        if (verification.propertyId) {
-          const reviewerId = auth.currentUser?.uid;
-          if (!reviewerId) throw new Error('Sign in with an administrator account to review documents.');
-          await verifyProperty(verification.propertyId, true, { adminId: reviewerId });
-        }
         toast.success(
           'Document marked reviewed',
           'Ilé recorded an internal document review. This is not a government registry result, identity check, or legal opinion.'
@@ -93,6 +113,33 @@ export const AdminVerificationPanel: React.FC = () => {
       );
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  const handleViewDocument = async (verification: VerificationRecord) => {
+    if (!verification.storagePath) {
+      toast.error('Document path unavailable', 'This legacy record needs the approved Firestore privacy migration before its file can be opened.');
+      return;
+    }
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) {
+      toast.error('Popup blocked', 'Allow a new tab to open the private title document.');
+      return;
+    }
+    popup.opener = null;
+    setOpeningDocumentId(verification.id);
+
+    try {
+      const blob = await getBlob(storageRef(storage, verification.storagePath));
+      const objectUrl = URL.createObjectURL(blob);
+      popup.location.replace(objectUrl);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5 * 60 * 1000);
+    } catch (err: any) {
+      popup.close();
+      console.error('Failed to open private title document:', err);
+      toast.error('Unable to open document', err?.message || 'Check your sign-in and Storage permissions.');
+    } finally {
+      setOpeningDocumentId(null);
     }
   };
 
@@ -152,14 +199,14 @@ export const AdminVerificationPanel: React.FC = () => {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <a
-                      href={item.documentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-emerald-600 hover:underline font-medium text-xs inline-flex items-center gap-1"
+                    <button
+                      type="button"
+                      onClick={() => void handleViewDocument(item)}
+                      disabled={openingDocumentId === item.id || !item.storagePath}
+                      className="text-emerald-600 hover:underline font-medium text-xs inline-flex items-center gap-1 disabled:opacity-50"
                     >
-                      📄 View Title File
-                    </a>
+                      {openingDocumentId === item.id ? 'Opening…' : item.storagePath ? '📄 View Title File' : 'Path migration needed'}
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     <span

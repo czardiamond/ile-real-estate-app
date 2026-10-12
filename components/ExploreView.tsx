@@ -555,7 +555,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                     {/* Map attribution and listing-only context */}
                     <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[400] w-full max-w-2xl px-4">
                         <div className="bg-white/90 backdrop-blur-xl px-4 py-3 rounded-2xl shadow-lg border border-white/20 text-xs text-gray-700 text-center">
-                          Map pins show published listings with seller-provided coordinates. No neighborhood or price-density data is currently connected.
+                          Exact seller-pinned coordinates are not included in public listings. Privacy-safe approximate map locations are not connected yet; switch to list view to browse available properties.
                         </div>
                     </div>
 

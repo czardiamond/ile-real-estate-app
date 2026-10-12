@@ -37,6 +37,7 @@ const App: React.FC = () => {
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState<boolean>(true);
+  const [isGuestAuthScreenOpen, setIsGuestAuthScreenOpen] = useState(false);
   
   // Navigation State
   const [activeTab, setActiveTab] = useState('explore');
@@ -187,7 +188,8 @@ const App: React.FC = () => {
             isActive: true
           };
 
-          await saveUserProfileToFirestore(newProfile);
+          const saved = await saveUserProfileToFirestore(newProfile);
+          if (!saved) throw new Error('Your account was created, but its Ilé profile could not be saved. Please sign in again after checking your connection.');
           profile = newProfile;
         }
 
@@ -208,6 +210,7 @@ const App: React.FC = () => {
       } catch (err) {
         console.error("Error syncing profile with Firestore:", err);
         if (isMounted) {
+          setCurrentUser(null);
           setIsProfileLoading(false);
         }
       }
@@ -245,6 +248,10 @@ const App: React.FC = () => {
   };
 
   const handleChat = (property: Property) => {
+      if (!currentUser) {
+          setIsGuestAuthScreenOpen(true);
+          return;
+      }
       setChatProperty(property);
   };
 
@@ -368,9 +375,17 @@ const App: React.FC = () => {
         setActiveTab('explore');
         toast.success('Listing published', `“${data.title}” is now available in the marketplace.`);
       } catch (err: any) {
-        await Promise.allSettled(uploadedRefs.map(fileRef => deleteObject(fileRef)));
+        const cleanupResults = await Promise.allSettled(uploadedRefs.map(fileRef => deleteObject(fileRef)));
+        const cleanupFailures = cleanupResults.filter(result => result.status === 'rejected').length;
         console.error('Listing publish failed:', err);
-        toast.error('Listing not published', err?.message || 'The upload or save failed. Check Firebase Storage/Firestore setup and try again.');
+        if (cleanupFailures > 0) {
+          console.error(`Failed to remove ${cleanupFailures} uploaded listing asset(s) after publish failure.`);
+        }
+        const failureMessage = err?.message || 'The upload or save failed. Check Firebase Storage/Firestore setup and try again.';
+        const cleanupWarning = cleanupFailures > 0
+          ? ` ${cleanupFailures} uploaded file(s) could not be removed and may need administrator cleanup.`
+          : '';
+        toast.error('Listing not published', `${failureMessage}${cleanupWarning}`);
       }
   };
 
@@ -404,7 +419,103 @@ const App: React.FC = () => {
   }
 
   if (!currentUser) {
-    return <AuthScreen />;
+    if (isGuestAuthScreenOpen) {
+      return (
+        <AuthScreen
+          onSuccess={() => setIsGuestAuthScreenOpen(false)}
+          onClose={() => setIsGuestAuthScreenOpen(false)}
+        />
+      );
+    }
+
+    if (selectedProperty) {
+      return (
+        <div className="min-h-screen bg-surface pb-12">
+          <header className="sticky top-0 z-40 flex items-center justify-between border-b border-outline-variant/20 bg-surface/95 px-4 py-3 backdrop-blur md:px-8">
+            <button type="button" onClick={() => setSelectedProperty(null)} className="flex items-center gap-2 text-sm font-semibold text-on-surface-variant hover:text-on-surface">
+              <ChevronLeft size={20} /> Back to listings
+            </button>
+            <button type="button" onClick={() => setIsGuestAuthScreenOpen(true)} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white">
+              Sign in
+            </button>
+          </header>
+          <main className="mx-auto max-w-5xl px-4 py-6 md:px-8">
+            <div className="overflow-hidden rounded-3xl bg-white shadow-sm">
+              <div className="relative h-[35vh] min-h-64 bg-surface-container">
+                <img src={selectedProperty.images[0]} alt={selectedProperty.title} className="h-full w-full object-cover" />
+                {selectedProperty.isVerified && <span className="absolute bottom-4 left-4 rounded-full bg-green-700 px-3 py-1 text-xs font-bold text-white">Ilé document review recorded</span>}
+              </div>
+              <div className="p-5 md:p-8">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-primary">{selectedProperty.type}</p>
+                    <h1 className="mt-2 text-2xl font-bold text-on-surface md:text-3xl">{selectedProperty.title}</h1>
+                    <p className="mt-2 flex items-center gap-2 text-on-surface-variant"><MapPin size={16} />{[selectedProperty.location.area, selectedProperty.location.city, selectedProperty.location.state].filter(Boolean).join(', ')}</p>
+                  </div>
+                  <p className="text-2xl font-bold text-primary">₦{selectedProperty.price.toLocaleString()}<span className="ml-1 text-sm font-medium text-on-surface-variant">{selectedProperty.period === 'total' ? '' : selectedProperty.period || ''}</span></p>
+                </div>
+                <p className="mt-6 whitespace-pre-line leading-7 text-on-surface-variant">{selectedProperty.description || 'No description has been provided for this listing.'}</p>
+                {selectedProperty.features.length > 0 && <div className="mt-6 flex flex-wrap gap-2">{selectedProperty.features.map(feature => <span key={feature} className="rounded-full bg-surface-container px-3 py-2 text-sm text-on-surface">{feature}</span>)}</div>}
+                {selectedProperty.isVerified && <p className="mt-6 rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-900">Ilé recorded an internal document review. This is not a government registry search, ownership confirmation, identity check, or legal opinion.</p>}
+                <div className="mt-8 rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Public listings show neighbourhood-level location only. Verify all documents and property details independently before paying.</div>
+                <button type="button" onClick={() => setIsGuestAuthScreenOpen(true)} className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-bold text-white md:w-auto">Sign in to send an enquiry</button>
+              </div>
+            </div>
+          </main>
+          {viewing3DTour && previewProperty?.virtualTourUrl && (
+            <div className="fixed inset-0 z-[100] flex flex-col bg-black">
+              <div className="flex items-center justify-between p-4 text-white"><h2 className="font-bold">3D Virtual Tour</h2><button onClick={() => setViewing3DTour(false)} aria-label="Close virtual tour"><X size={22} /></button></div>
+              <iframe src={previewProperty.virtualTourUrl} title="Property virtual tour" className="h-full w-full border-0" allowFullScreen allow="xr-spatial-tracking" />
+            </div>
+          )}
+          {viewingFloorPlan && previewProperty && ((previewProperty.floorPlanImages?.length || 0) > 0 || previewProperty.floorPlanUrl) && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-auto bg-black/90 p-4">
+              <button onClick={() => setViewingFloorPlan(false)} aria-label="Close floor plan" className="absolute right-4 top-4 text-white"><X size={24} /></button>
+              <div className="max-h-[90vh] max-w-4xl overflow-auto rounded-lg bg-white p-2">{(previewProperty.floorPlanImages?.length ? previewProperty.floorPlanImages : previewProperty.floorPlanUrl ? [previewProperty.floorPlanUrl] : []).map((image, index) => <img key={`${image}-${index}`} src={image} alt={`Floor plan ${index + 1}`} className="mb-4 h-auto w-full last:mb-0" />)}</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-surface">
+        <header className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between border-b border-outline-variant/20 bg-surface/95 px-4 backdrop-blur md:px-8">
+          <a href="/" className="text-xl font-extrabold tracking-tight text-primary">Ilé</a>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => { setIsGuestAuthScreenOpen(true); }} className="rounded-xl px-3 py-2 text-sm font-semibold text-on-surface-variant">Sign in</button>
+            <button type="button" onClick={() => { setIsGuestAuthScreenOpen(true); }} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white">Create account</button>
+          </div>
+        </header>
+        <main className="pt-16">
+          <Suspense fallback={<div role="status" className="min-h-[40vh] flex items-center justify-center text-sm text-on-surface-variant">Loading marketplace…</div>}>
+            <ExploreView
+              properties={allProperties}
+              onPropertySelect={handlePropertySelect}
+              onChat={handleChat}
+              onView3D={handleView3D}
+              onViewFloorPlan={handleViewFloorPlan}
+              savedPropertyIds={savedPropertyIds}
+              onToggleSave={handleToggleSave}
+              onOpenMortgageCalculator={() => {}}
+            />
+          </Suspense>
+          <div className="mx-auto max-w-7xl px-4 pb-8 text-center text-xs text-on-surface-variant">Browse Ilé listings without an account. Sign in to contact owners or manage listings.</div>
+        </main>
+        {viewing3DTour && previewProperty?.virtualTourUrl && (
+          <div className="fixed inset-0 z-[100] flex flex-col bg-black">
+            <div className="flex items-center justify-between p-4 text-white"><h2 className="font-bold">3D Virtual Tour</h2><button onClick={() => setViewing3DTour(false)} aria-label="Close virtual tour"><X size={22} /></button></div>
+            <iframe src={previewProperty.virtualTourUrl} title="Property virtual tour" className="h-full w-full border-0" allowFullScreen allow="xr-spatial-tracking" />
+          </div>
+        )}
+        {viewingFloorPlan && previewProperty && ((previewProperty.floorPlanImages?.length || 0) > 0 || previewProperty.floorPlanUrl) && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-auto bg-black/90 p-4">
+            <button onClick={() => setViewingFloorPlan(false)} aria-label="Close floor plan" className="absolute right-4 top-4 text-white"><X size={24} /></button>
+            <div className="max-h-[90vh] max-w-4xl overflow-auto rounded-lg bg-white p-2">{(previewProperty.floorPlanImages?.length ? previewProperty.floorPlanImages : previewProperty.floorPlanUrl ? [previewProperty.floorPlanUrl] : []).map((image, index) => <img key={`${image}-${index}`} src={image} alt={`Floor plan ${index + 1}`} className="mb-4 h-auto w-full last:mb-0" />)}</div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   // --- RENDER PROPERTY DETAILS OVERLAY ---
@@ -483,7 +594,7 @@ const App: React.FC = () => {
                               </div>
                               <h1 className="text-2xl md:text-3xl font-bold text-on-surface mb-1">{selectedProperty.title}</h1>
                               <p className="text-on-surface-variant flex items-center gap-1">
-                                  <MapPin size={16} /> {selectedProperty.location.address}, {selectedProperty.location.area}
+                                  <MapPin size={16} /> {[selectedProperty.location.area, selectedProperty.location.city, selectedProperty.location.state].filter(Boolean).join(', ')}
                               </p>
                           </div>
                           <div className="text-left md:text-right">
@@ -508,7 +619,7 @@ const App: React.FC = () => {
                               {selectedProperty.isVerified ? 'An Ilé administrator recorded an internal document review for this listing.' : 'No Ilé document review is recorded for this listing.'}
                               {' '}This is not a government registry search, ownership confirmation, encumbrance check, identity check, or legal opinion. Verify documents independently before paying.
                           </p>
-                          {selectedProperty.ownerId === currentUser.id && !selectedProperty.isVerified && (
+                          {selectedProperty.agentId === currentUser.id && !selectedProperty.isVerified && (
                               <button onClick={() => setIsLandTitleUploadModalOpen(true)} className="mt-4 px-4 py-2 rounded-xl bg-emerald-800 text-white text-sm font-bold hover:bg-emerald-900">
                                   Submit title document for Ilé review
                               </button>
@@ -526,8 +637,8 @@ const App: React.FC = () => {
                                       <PropertyDetailMap latitude={selectedProperty.coordinates.lat} longitude={selectedProperty.coordinates.lng} />
                                   </Suspense>
                               ) : (
-                                  <div className="h-full flex items-center justify-center bg-surface-container text-center p-6 text-sm text-on-surface-variant">
-                                      Exact map coordinates were not provided for this listing. The address is shown as supplied by the lister.
+                                      <div className="h-full flex items-center justify-center bg-surface-container text-center p-6 text-sm text-on-surface-variant">
+                                          Only neighbourhood-level location is shared on marketplace listings. Exact street addresses and map coordinates are kept out of public listing records.
                                   </div>
                               )}
                           </div>
@@ -687,7 +798,7 @@ const App: React.FC = () => {
                                       </div>
                                       <div>
                                           <p className="text-xs text-on-surface-variant">Listed by</p>
-                                          <p className="font-bold text-on-surface">{selectedProperty.ownerId === currentUser.id ? currentUser.name : 'Listing owner'}</p>
+                                          <p className="font-bold text-on-surface">{selectedProperty.agentId === currentUser.id ? currentUser.name : 'Listing owner'}</p>
                                           <div className="text-[10px] text-on-surface-variant">No identity verification provider is connected</div>
                                       </div>
                                   </div>

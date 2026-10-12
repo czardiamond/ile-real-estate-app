@@ -18,149 +18,521 @@ service cloud.firestore {
       return role in ['Public', 'Agent', 'Brokerage'];
     }
 
-    match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId)
-        && request.resource.data.id == userId
-        && allowedSelfRole(request.resource.data.role)
-        && request.resource.data.verified == false
-        && request.resource.data.verification.status != 'Verified'
-        && request.resource.data.wallet.balance == 0
-        && request.resource.data.wallet.lifetimeEarnings == 0
-        && request.resource.data.wallet.pendingClearance == 0
-        && request.resource.data.keys().hasOnly([
-          'id', 'name', 'email', 'phone', 'role', 'avatarUrl', 'verified', 'verification',
-          'agencyName', 'brokerageRole', 'isActive', 'referralCode', 'referredBy',
-          'networkRank', 'wallet', 'bankDetails', 'downlineCount', 'updatedAt'
+    function validTextAt(values, index, maxLength) {
+      return values.size() <= index
+        || (values[index] is string && values[index].size() <= maxLength);
+    }
+
+    function validTextList(values, maxItems, maxLength, minItems) {
+      return values is list
+        && values.size() >= minItems && values.size() <= maxItems
+        && validTextAt(values, 0, maxLength) && validTextAt(values, 1, maxLength)
+        && validTextAt(values, 2, maxLength) && validTextAt(values, 3, maxLength)
+        && validTextAt(values, 4, maxLength);
+    }
+
+    function validFeatures(values) {
+      return values is list && values.size() <= 5
+        && values.hasOnly([
+          'POP Ceilings', 'Backup Generator', 'Swimming Pool', '24/7 Security', 'Water Heater',
+          'Fitted Kitchen', 'Serviced', 'Prepaid Meter', 'CCTV', 'Inverter', 'Solar Powered',
+          'Ample Parking', 'BQ', '24hrs Power', 'Walk-in Closet', 'Jacuzzi', 'Glass Display',
+          'Loading Bay', 'Conference Room', 'Reception', 'Fire Alarm', 'Restroom', 'Changing Room',
+          'Stage', 'Lighting System', 'Sound System', 'Projector', 'Vendor Area', 'Cooling System',
+          'Fenced', 'Gated', 'Dry Land', 'Survey Plan', 'Corner Piece', 'Access Road'
         ]);
-      allow update: if isAdmin() || (isOwner(userId)
-        && request.resource.data.id == userId
-        && request.resource.data.role == resource.data.role
-        && request.resource.data.verified == resource.data.verified
-        && request.resource.data.verification == resource.data.verification
-        && request.resource.data.wallet == resource.data.wallet
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'name', 'email', 'phone', 'avatarUrl', 'agencyName', 'updatedAt'
-        ]));
-      allow delete: if isAdmin();
     }
 
-    // Deliberately limited to non-sensitive directory fields. Never store wallet, KYC, or bank data here.
-    match /public_profiles/{userId} {
-      allow read: if signedIn();
-      allow create: if isOwner(userId)
-        && request.resource.data.id == userId
-        && allowedSelfRole(request.resource.data.role)
-        && request.resource.data.keys().hasOnly(['id', 'name', 'role', 'agencyName', 'avatarUrl', 'updatedAt']);
-      allow update: if isOwner(userId)
-        && request.resource.data.id == userId
-        && request.resource.data.role == resource.data.role
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'agencyName', 'avatarUrl', 'updatedAt']);
-      allow delete: if isOwner(userId) || isAdmin();
+    function validSpecs(data) {
+      return data is map
+        && data.keys().hasOnly(['bedrooms', 'bathrooms', 'sizeSqM', 'capacity', 'parkingSpaces'])
+        && (!('bedrooms' in data) || (data.bedrooms is number && data.bedrooms >= 0 && data.bedrooms <= 1000000))
+        && (!('bathrooms' in data) || (data.bathrooms is number && data.bathrooms >= 0 && data.bathrooms <= 1000000))
+        && (!('sizeSqM' in data) || (data.sizeSqM is number && data.sizeSqM >= 0 && data.sizeSqM <= 1000000))
+        && (!('capacity' in data) || (data.capacity is number && data.capacity >= 0 && data.capacity <= 1000000))
+        && (!('parkingSpaces' in data) || (data.parkingSpaces is number && data.parkingSpaces >= 0 && data.parkingSpaces <= 1000000));
     }
 
-    match /properties/{propertyId} {
-      allow read: if true;
-      allow create: if signedIn()
-        && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.agentId == request.auth.uid
-        && request.resource.data.title is string
-        && request.resource.data.title.size() > 0
-        && request.resource.data.price is number
-        && request.resource.data.price > 0
-        && request.resource.data.type is string
-        && request.resource.data.type.size() > 0
-        && request.resource.data.period in ['per year', 'per month', 'per day', 'total']
-        && request.resource.data.location is map
-        && request.resource.data.location.area is string
-        && request.resource.data.location.area.size() > 0
-        && request.resource.data.location.state is string
-        && request.resource.data.location.state.size() > 0
-        && request.resource.data.isVerified == false
-        && request.resource.data.verificationStatus == 'Pending'
-        && request.resource.data.verificationLevel == 'NONE'
-        && request.resource.data.status == 'Available'
-        && !('titleDocument' in request.resource.data);
-      allow update: if isAdmin() || (signedIn()
+    function validUserDefaults(data, userId) {
+      return data.id == userId
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 120
+        && data.email is string && data.email.size() <= 320
+        && data.phone is string && data.phone.size() <= 40
+        && allowedSelfRole(data.role)
+        && data.avatarUrl is string && data.avatarUrl.size() <= 2048
+        && data.verified == false
+        && data.verification is map
+        && data.verification.keys().hasOnly(['status'])
+        && data.verification.status == 'Unverified'
+        && data.wallet is map
+        && data.wallet.keys().hasOnly(['balance', 'lifetimeEarnings', 'pendingClearance'])
+        && data.wallet.balance == 0
+        && data.wallet.lifetimeEarnings == 0
+        && data.wallet.pendingClearance == 0
+        && data.referralCode == ''
+        && data.networkRank == 'Scout'
+        && data.downlineCount == 0;
+    }
+
+    function validPublicProfile(data, userId) {
+      return data.keys().hasOnly(['id', 'name', 'role', 'agencyName', 'avatarUrl', 'updatedAt'])
+        && data.id == userId
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 120
+        && allowedSelfRole(data.role)
+        && data.agencyName is string && data.agencyName.size() <= 120
+        && data.avatarUrl is string && data.avatarUrl.size() <= 2048;
+    }
+
+    function validPropertyData(data, userId, strictKeys) {
+      return (!strictKeys || data.keys().hasOnly([
+          'ownerId', 'agentId', 'title', 'description', 'price', 'period', 'location', 'type', 'status',
+          'specs', 'features', 'images', 'videoUrl', 'floorPlanUrl', 'floorPlanImages', 'coordinates',
+          'floodRisk', 'avgPowerHours', 'isSolarPowered', 'waterSource', 'virtualTourUrl', 'smartMeterId',
+          'isVerified', 'verificationStatus', 'verificationLevel', 'verifiedAt', 'verifiedBy', 'rejectionReason',
+          'createdAt', 'updatedAt'
+        ]))
+        && data.ownerId == userId
+        && data.agentId == userId
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.description is string && data.description.size() <= 5000
+        && data.price is number && data.price > 0 && data.price <= 1000000000000000
+        && data.period in ['per year', 'per month', 'per day', 'total']
+        && data.type in ['Apartment', 'House', 'Duplex', 'Bungalow', 'Land', 'Office Space', 'Shop / Plaza', 'Warehouse', 'Container Space', 'Event Center', 'Wedding Hall', 'Open Field', 'Party Venue', 'Short-let', 'Guest House', 'Other']
+        && data.location is map
+        && data.location.keys().hasOnly(['address', 'area', 'city', 'state'])
+        && data.location.address is string && data.location.address.size() <= 200
+        && data.location.area is string && data.location.area.size() > 0 && data.location.area.size() <= 150
+        && data.location.city is string && data.location.city.size() <= 100
+        && data.location.state is string && data.location.state.size() > 0 && data.location.state.size() <= 100
+        && validSpecs(data.specs)
+        && validFeatures(data.features)
+        && validTextList(data.images, 5, 2048, 1)
+        && data.status in ['Available', 'Under Offer', 'Taken']
+        && data.floodRisk in ['Not assessed', 'Dry Land (Low Risk)', 'Moderate Risk', 'Flood Prone (High Risk)']
+        && data.isVerified is bool
+        && data.verificationStatus in ['Pending', 'Verified', 'Rejected']
+        && data.verificationLevel in ['NONE', 'IDENTITY_VERIFIED', 'BUSINESS_VERIFIED', 'DOCUMENT_REVIEWED', 'PHYSICALLY_INSPECTED']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!('videoUrl' in data) || (data.videoUrl is string && data.videoUrl.size() <= 2048))
+        && (!('floorPlanUrl' in data) || (data.floorPlanUrl is string && data.floorPlanUrl.size() <= 2048))
+        && (!('floorPlanImages' in data) || validTextList(data.floorPlanImages, 1, 2048, 0))
+        && (!('virtualTourUrl' in data) || (data.virtualTourUrl is string && data.virtualTourUrl.size() <= 2048))
+        && (!('coordinates' in data) || (data.coordinates is map
+          && data.coordinates.keys().hasOnly(['lat', 'lng'])
+          && data.coordinates.lat is number && data.coordinates.lat >= -90 && data.coordinates.lat <= 90
+          && data.coordinates.lng is number && data.coordinates.lng >= -180 && data.coordinates.lng <= 180))
+        && (!('avgPowerHours' in data) || (data.avgPowerHours is number && data.avgPowerHours >= 0 && data.avgPowerHours <= 24))
+        && (!('isSolarPowered' in data) || data.isSolarPowered is bool)
+        && (!('waterSource' in data) || data.waterSource in ['Borehole', 'Water Board', 'Truck', 'Treatment Plant', 'Not specified'])
+        && (!('smartMeterId' in data) || (data.smartMeterId is string && data.smartMeterId.size() <= 200))
+        && (!('verifiedAt' in data) || data.verifiedAt == null || data.verifiedAt is timestamp)
+        && (!('verifiedBy' in data) || (data.verifiedBy is string && data.verifiedBy.size() <= 128))
+        && (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 500));
+    }
+
+    function validPublicListing(data, listingId) {
+      return data.keys().hasOnly([
+          'agentId', 'title', 'description', 'price', 'period', 'location', 'type', 'status',
+          'specs', 'features', 'images', 'videoUrl', 'floorPlanUrl', 'floorPlanImages',
+          'floodRisk', 'avgPowerHours', 'isSolarPowered', 'waterSource', 'virtualTourUrl',
+          'isVerified', 'verificationStatus', 'verificationLevel', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll(['agentId', 'title', 'description', 'price', 'period', 'location', 'type', 'status', 'specs', 'features', 'images', 'isVerified', 'verificationStatus', 'verificationLevel', 'createdAt', 'updatedAt'])
+        && data.agentId is string && data.agentId.size() > 0 && data.agentId.size() <= 128
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.description is string && data.description.size() <= 5000
+        && data.price is number && data.price > 0 && data.price <= 1000000000000000
+        && data.period in ['per year', 'per month', 'per day', 'total']
+        && data.location is map
+        && data.location.keys().hasOnly(['area', 'city', 'state'])
+        && data.location.area is string && data.location.area.size() > 0 && data.location.area.size() <= 150
+        && data.location.city is string && data.location.city.size() <= 100
+        && data.location.state is string && data.location.state.size() > 0 && data.location.state.size() <= 100
+        && data.type in ['Apartment', 'House', 'Duplex', 'Bungalow', 'Land', 'Office Space', 'Shop / Plaza', 'Warehouse', 'Container Space', 'Event Center', 'Wedding Hall', 'Open Field', 'Party Venue', 'Short-let', 'Guest House', 'Other']
+        && data.status in ['Available', 'Under Offer', 'Taken']
+        && data.floodRisk in ['Not assessed', 'Dry Land (Low Risk)', 'Moderate Risk', 'Flood Prone (High Risk)']
+        && validSpecs(data.specs)
+        && validFeatures(data.features)
+        && validTextList(data.images, 5, 2048, 1)
+        && data.isVerified is bool
+        && data.verificationStatus in ['Pending', 'Verified', 'Rejected']
+        && data.verificationLevel in ['NONE', 'IDENTITY_VERIFIED', 'BUSINESS_VERIFIED', 'DOCUMENT_REVIEWED', 'PHYSICALLY_INSPECTED']
+        && data.createdAt is timestamp && data.updatedAt is timestamp
+        && (!('videoUrl' in data) || (data.videoUrl is string && data.videoUrl.size() <= 2048))
+        && (!('floorPlanUrl' in data) || (data.floorPlanUrl is string && data.floorPlanUrl.size() <= 2048))
+        && (!('floorPlanImages' in data) || validTextList(data.floorPlanImages, 1, 2048, 0))
+        && (!('virtualTourUrl' in data) || (data.virtualTourUrl is string && data.virtualTourUrl.size() <= 2048))
+        && (!('avgPowerHours' in data) || (data.avgPowerHours is number && data.avgPowerHours >= 0 && data.avgPowerHours <= 24))
+        && (!('isSolarPowered' in data) || data.isSolarPowered is bool)
+        && (!('waterSource' in data) || data.waterSource in ['Borehole', 'Water Board', 'Truck', 'Treatment Plant', 'Not specified']);
+    }
+
+    function validPublicListingOwnerUpdate(data, oldData) {
+      let changed = data.diff(oldData).affectedKeys();
+      return changed.hasOnly([
+          'title', 'description', 'price', 'period', 'location', 'type', 'specs', 'features', 'images',
+          'videoUrl', 'floorPlanUrl', 'floorPlanImages', 'status', 'floodRisk', 'avgPowerHours',
+          'isSolarPowered', 'waterSource', 'virtualTourUrl', 'updatedAt'
+        ])
+        && (!changed.hasAny(['title']) || (data.title is string && data.title.size() > 0 && data.title.size() <= 200))
+        && (!changed.hasAny(['description']) || (data.description is string && data.description.size() <= 5000))
+        && (!changed.hasAny(['price']) || (data.price is number && data.price > 0 && data.price <= 1000000000000000))
+        && (!changed.hasAny(['period']) || data.period in ['per year', 'per month', 'per day', 'total'])
+        && (!changed.hasAny(['location']) || (data.location is map
+          && data.location.keys().hasOnly(['area', 'city', 'state'])
+          && data.location.area is string && data.location.area.size() > 0 && data.location.area.size() <= 150
+          && data.location.city is string && data.location.city.size() <= 100
+          && data.location.state is string && data.location.state.size() > 0 && data.location.state.size() <= 100))
+        && (!changed.hasAny(['type']) || data.type in ['Apartment', 'House', 'Duplex', 'Bungalow', 'Land', 'Office Space', 'Shop / Plaza', 'Warehouse', 'Container Space', 'Event Center', 'Wedding Hall', 'Open Field', 'Party Venue', 'Short-let', 'Guest House', 'Other'])
+        && (!changed.hasAny(['specs']) || validSpecs(data.specs))
+        && (!changed.hasAny(['features']) || validFeatures(data.features))
+        && (!changed.hasAny(['images']) || validTextList(data.images, 5, 2048, 1))
+        && (!changed.hasAny(['status']) || data.status in ['Available', 'Under Offer', 'Taken'])
+        && (!changed.hasAny(['floodRisk']) || data.floodRisk in ['Not assessed', 'Dry Land (Low Risk)', 'Moderate Risk', 'Flood Prone (High Risk)'])
+        && (!changed.hasAny(['videoUrl']) || (data.videoUrl is string && data.videoUrl.size() <= 2048))
+        && (!changed.hasAny(['floorPlanUrl']) || (data.floorPlanUrl is string && data.floorPlanUrl.size() <= 2048))
+        && (!changed.hasAny(['floorPlanImages']) || validTextList(data.floorPlanImages, 1, 2048, 0))
+        && (!changed.hasAny(['virtualTourUrl']) || (data.virtualTourUrl is string && data.virtualTourUrl.size() <= 2048))
+        && (!changed.hasAny(['avgPowerHours']) || (data.avgPowerHours is number && data.avgPowerHours >= 0 && data.avgPowerHours <= 24))
+        && (!changed.hasAny(['isSolarPowered']) || data.isSolarPowered is bool)
+        && (!changed.hasAny(['waterSource']) || data.waterSource in ['Borehole', 'Water Board', 'Truck', 'Treatment Plant', 'Not specified'])
+        && data.updatedAt == request.time;
+    }
+
+    function publicListingMatchesProperty(listingId, data) {
+      let privatePath = /databases/$(database)/documents/properties/$(listingId);
+      let privateData = getAfter(privatePath).data;
+      return existsAfter(privatePath)
+        && data.agentId == privateData.agentId
+        && data.title == privateData.title
+        && data.description == privateData.description
+        && data.price == privateData.price
+        && data.period == privateData.period
+        && data.location.area == privateData.location.area
+        && data.location.city == privateData.location.city
+        && data.location.state == privateData.location.state
+        && data.type == privateData.type
+        && data.status == privateData.status
+        && data.createdAt == privateData.createdAt
+        && data.updatedAt == privateData.updatedAt;
+    }
+
+    function publicReviewMatchesProperty(listingId, data) {
+      let privatePath = /databases/$(database)/documents/properties/$(listingId);
+      let privateData = getAfter(privatePath).data;
+      return existsAfter(privatePath)
+        && data.isVerified == privateData.isVerified
+        && data.verificationStatus == privateData.verificationStatus
+        && data.verificationLevel == privateData.verificationLevel
+        && data.updatedAt == privateData.updatedAt;
+    }
+
+    function validOwnerPropertyUpdate(propertyId) {
+      return signedIn()
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.agentId == resource.data.agentId
         && request.resource.data.isVerified == resource.data.isVerified
         && request.resource.data.verificationStatus == resource.data.verificationStatus
         && request.resource.data.verificationLevel == resource.data.verificationLevel
-        && (!('status' in request.resource.data)
-          || request.resource.data.status in ['Available', 'Under Offer', 'Taken'])
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'title', 'description', 'price', 'period', 'location', 'type',
-          'features', 'specs', 'images', 'imageUrls', 'videoUrl', 'floorPlanUrl',
-          'coordinates', 'status', 'updatedAt'
-        ]));
-      allow delete: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
+          'title', 'description', 'price', 'period', 'location', 'type', 'specs', 'features', 'images',
+          'videoUrl', 'floorPlanUrl', 'floorPlanImages', 'coordinates', 'status', 'floodRisk',
+          'avgPowerHours', 'isSolarPowered', 'waterSource', 'virtualTourUrl', 'updatedAt'
+        ])
+        && validPropertyData(request.resource.data, request.auth.uid, false)
+        && existsAfter(/databases/$(database)/documents/public_listings/$(propertyId));
+    }
+
+    function validAdminPropertyReview() {
+      return isAdmin()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.agentId == resource.data.agentId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'isVerified', 'verificationStatus', 'verificationLevel', 'verifiedAt', 'verifiedBy', 'rejectionReason', 'updatedAt'
+        ])
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.isVerified is bool
+        && request.resource.data.verificationStatus in ['Pending', 'Verified', 'Rejected']
+        && request.resource.data.isVerified == (request.resource.data.verificationStatus == 'Verified')
+        && request.resource.data.verificationLevel in ['NONE', 'DOCUMENT_REVIEWED']
+        && (!('verifiedAt' in request.resource.data) || request.resource.data.verifiedAt == null || request.resource.data.verifiedAt is timestamp)
+        && (!('verifiedBy' in request.resource.data) || (request.resource.data.verifiedBy is string && request.resource.data.verifiedBy == request.auth.uid))
+        && (!('rejectionReason' in request.resource.data) || (request.resource.data.rejectionReason is string && request.resource.data.rejectionReason.size() <= 500));
+    }
+
+    function validAdminPublicListingReview() {
+      return isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isVerified', 'verificationStatus', 'verificationLevel', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.isVerified is bool
+        && request.resource.data.verificationStatus in ['Pending', 'Verified', 'Rejected']
+        && request.resource.data.isVerified == (request.resource.data.verificationStatus == 'Verified')
+        && request.resource.data.verificationLevel in ['NONE', 'DOCUMENT_REVIEWED'];
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          'id', 'name', 'email', 'phone', 'role', 'avatarUrl', 'verified', 'verification', 'agencyName',
+          'referralCode', 'networkRank', 'wallet', 'downlineCount', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll(['id', 'name', 'email', 'phone', 'role', 'avatarUrl', 'verified', 'verification', 'referralCode', 'networkRank', 'wallet', 'downlineCount', 'updatedAt'])
+        && validUserDefaults(request.resource.data, userId)
+        && request.resource.data.updatedAt is timestamp;
+      allow update: if isOwner(userId)
+        && request.resource.data.id == userId
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.verified == resource.data.verified
+        && request.resource.data.verification == resource.data.verification
+        && request.resource.data.wallet == resource.data.wallet
+        && request.resource.data.referralCode == resource.data.referralCode
+        && request.resource.data.networkRank == resource.data.networkRank
+        && request.resource.data.downlineCount == resource.data.downlineCount
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'email', 'phone', 'avatarUrl', 'agencyName', 'updatedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120
+        && request.resource.data.email is string && request.resource.data.email.size() <= 320
+        && request.resource.data.phone is string && request.resource.data.phone.size() <= 40
+        && request.resource.data.avatarUrl is string && request.resource.data.avatarUrl.size() <= 2048
+        && (!('agencyName' in request.resource.data) || (request.resource.data.agencyName is string && request.resource.data.agencyName.size() <= 120))
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isAdmin()
+        && request.resource.data.id == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'role', 'verified', 'verification', 'isActive', 'agencyName', 'brokerageRole', 'referralCode', 'referredBy',
+          'networkRank', 'downlineCount', 'wallet', 'bankDetails', 'isVerifiedSeller', 'updatedAt'
+        ])
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // Authenticated directory only. Sensitive/private fields are never allowed here.
+    match /public_profiles/{userId} {
+      allow get, list: if signedIn()
+        && resource.data.keys().hasOnly(['id', 'name', 'role', 'agencyName', 'avatarUrl', 'updatedAt']);
+      allow create: if isOwner(userId)
+        && validPublicProfile(request.resource.data, userId)
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && validPublicProfile(request.resource.data, userId)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Private source records hold exact addresses, coordinates and internal review data.
+    match /properties/{propertyId} {
+      allow get: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow list: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if signedIn()
+        && validPropertyData(request.resource.data, request.auth.uid, true)
+        && request.resource.data.isVerified == false
+        && request.resource.data.verificationStatus == 'Pending'
+        && request.resource.data.verificationLevel == 'NONE'
+        && request.resource.data.status == 'Available'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/public_listings/$(propertyId));
+      allow update: if validOwnerPropertyUpdate(propertyId) || validAdminPropertyReview();
+      allow delete: if (isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid))
+        && !existsAfter(/databases/$(database)/documents/public_listings/$(propertyId));
+    }
+
+    // This is the only anonymously readable property collection; documents are allowlisted projections.
+    match /public_listings/{listingId} {
+      allow get: if validPublicListing(resource.data, listingId)
+        && resource.data.status in ['Available', 'Under Offer', 'Taken'];
+      allow list: if resource.data.status in ['Available', 'Under Offer', 'Taken'];
+      allow create: if signedIn()
+        && validPublicListing(request.resource.data, listingId)
+        && request.resource.data.status == 'Available'
+        && request.resource.data.isVerified == false
+        && request.resource.data.verificationStatus == 'Pending'
+        && request.resource.data.verificationLevel == 'NONE'
+        && publicListingMatchesProperty(listingId, request.resource.data);
+      allow update: if (signedIn()
+          && get(/databases/$(database)/documents/properties/$(listingId)).data.ownerId == request.auth.uid
+          && validPublicListingOwnerUpdate(request.resource.data, resource.data)
+          && request.resource.data.agentId == resource.data.agentId
+          && request.resource.data.isVerified == resource.data.isVerified
+          && request.resource.data.verificationStatus == resource.data.verificationStatus
+          && request.resource.data.verificationLevel == resource.data.verificationLevel
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'title', 'description', 'price', 'period', 'location', 'type', 'specs', 'features', 'images',
+            'videoUrl', 'floorPlanUrl', 'floorPlanImages', 'status', 'floodRisk', 'avgPowerHours',
+            'isSolarPowered', 'waterSource', 'virtualTourUrl', 'updatedAt'
+          ])
+          && publicListingMatchesProperty(listingId, request.resource.data))
+        || (validAdminPublicListingReview()
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'isVerified', 'verificationStatus', 'verificationLevel', 'updatedAt'
+          ])
+          && publicReviewMatchesProperty(listingId, request.resource.data));
+      allow delete: if isAdmin()
+        || (signedIn() && get(/databases/$(database)/documents/properties/$(listingId)).data.ownerId == request.auth.uid);
     }
 
     match /property_alerts/{alertId} {
-      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
-      allow create, update: if signedIn()
+      allow get, list: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'id', 'userId', 'userEmail', 'propertyId', 'propertyTitle', 'propertyPrice',
+          'locationArea', 'notifyPriceDrop', 'notifySimilarListings', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'id', 'userId', 'userEmail', 'propertyId', 'propertyTitle', 'propertyPrice',
+          'locationArea', 'notifyPriceDrop', 'notifySimilarListings', 'createdAt', 'updatedAt'
+        ])
         && request.resource.data.userId == request.auth.uid
-        && alertId == request.auth.uid + '_' + request.resource.data.propertyId;
+        && request.resource.data.id == alertId
+        && request.resource.data.propertyId is string && request.resource.data.propertyId.size() > 0 && request.resource.data.propertyId.size() <= 128
+        && alertId == request.auth.uid + '_' + request.resource.data.propertyId
+        && request.resource.data.userEmail is string && request.resource.data.userEmail.size() <= 320
+        && request.resource.data.propertyTitle is string && request.resource.data.propertyTitle.size() <= 200
+        && request.resource.data.locationArea is string && request.resource.data.locationArea.size() <= 150
+        && request.resource.data.propertyPrice is number && request.resource.data.propertyPrice >= 0 && request.resource.data.propertyPrice <= 1000000000000000
+        && request.resource.data.notifyPriceDrop is bool
+        && request.resource.data.notifySimilarListings is bool
+        && request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 40
+        && request.resource.data.updatedAt is string && request.resource.data.updatedAt.size() <= 40;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.id == alertId
+        && request.resource.data.propertyId == resource.data.propertyId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userEmail', 'propertyTitle', 'propertyPrice', 'locationArea', 'notifyPriceDrop', 'notifySimilarListings', 'updatedAt'])
+        && request.resource.data.keys().hasOnly([
+          'id', 'userId', 'userEmail', 'propertyId', 'propertyTitle', 'propertyPrice',
+          'locationArea', 'notifyPriceDrop', 'notifySimilarListings', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.userEmail is string && request.resource.data.userEmail.size() <= 320
+        && request.resource.data.propertyTitle is string && request.resource.data.propertyTitle.size() <= 200
+        && request.resource.data.locationArea is string && request.resource.data.locationArea.size() <= 150
+        && request.resource.data.propertyPrice is number && request.resource.data.propertyPrice >= 0 && request.resource.data.propertyPrice <= 1000000000000000
+        && request.resource.data.notifyPriceDrop is bool
+        && request.resource.data.notifySimilarListings is bool
+        && request.resource.data.updatedAt is string && request.resource.data.updatedAt.size() <= 40;
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /leads/{leadId} {
-      allow read, delete: if isAdmin() || (signedIn() && resource.data.agentId == request.auth.uid);
-      allow update: if isAdmin() || (signedIn()
+      allow get, list: if isAdmin()
+        || (signedIn() && (resource.data.agentId == request.auth.uid || resource.data.buyerId == request.auth.uid));
+      allow delete: if isAdmin() || (signedIn() && resource.data.agentId == request.auth.uid) || (signedIn() && resource.data.buyerId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['id', 'buyerId', 'agentId', 'propertyId', 'name', 'email', 'phone', 'budget', 'value', 'notes', 'status', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasAll(['id', 'buyerId', 'agentId', 'propertyId', 'name', 'email', 'phone', 'budget', 'value', 'notes', 'status', 'createdAt', 'updatedAt'])
+        && request.resource.data.id == leadId
+        && request.resource.data.buyerId == request.auth.uid
+        && request.resource.data.agentId is string && request.resource.data.agentId.size() > 0 && request.resource.data.agentId.size() <= 128
+        && request.resource.data.propertyId is string && request.resource.data.propertyId.size() > 0 && request.resource.data.propertyId.size() <= 128
+        && request.resource.data.status == 'New Arrival'
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120
+        && request.resource.data.email is string && request.resource.data.email.size() <= 320
+        && request.resource.data.phone is string && request.resource.data.phone.size() <= 40
+        && request.resource.data.notes is string && request.resource.data.notes.size() >= 5 && request.resource.data.notes.size() <= 4000
+        && request.resource.data.budget is number && request.resource.data.budget >= 0 && request.resource.data.budget <= 1000000000000000
+        && request.resource.data.value is number && request.resource.data.value >= 0 && request.resource.data.value <= 1000000000000000
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && exists(/databases/$(database)/documents/properties/$(request.resource.data.propertyId))
+        && get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.ownerId == request.resource.data.agentId;
+      allow update: if signedIn()
         && resource.data.agentId == request.auth.uid
         && request.resource.data.agentId == resource.data.agentId
         && request.resource.data.buyerId == resource.data.buyerId
         && request.resource.data.propertyId == resource.data.propertyId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes', 'updatedAt']));
-      allow create: if signedIn()
-        && request.resource.data.buyerId == request.auth.uid
-        && request.resource.data.agentId is string
-        && request.resource.data.propertyId is string
-        && request.resource.data.id == leadId
-        && request.resource.data.status == 'New Arrival'
-        && request.resource.data.name is string
-        && request.resource.data.name.size() <= 200
-        && request.resource.data.email is string
-        && request.resource.data.email.size() <= 320
-        && request.resource.data.phone is string
-        && request.resource.data.phone.size() <= 40
-        && request.resource.data.notes is string
-        && request.resource.data.notes.size() >= 5
-        && request.resource.data.notes.size() <= 4000
-        && request.resource.data.budget is number
-        && request.resource.data.value is number
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data.keys().hasOnly(['id', 'buyerId', 'agentId', 'propertyId', 'name', 'email', 'phone', 'budget', 'value', 'notes', 'status', 'createdAt', 'updatedAt'])
-        && exists(/databases/$(database)/documents/properties/$(request.resource.data.propertyId))
-        && get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.ownerId == request.resource.data.agentId;
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes', 'updatedAt'])
+        && request.resource.data.status in ['New Arrival', 'Talking', 'Visiting', 'Negotiating', 'Closed']
+        && request.resource.data.notes is string && request.resource.data.notes.size() <= 4000
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes', 'updatedAt'])
+        && request.resource.data.status in ['New Arrival', 'Talking', 'Visiting', 'Negotiating', 'Closed']
+        && request.resource.data.notes is string && request.resource.data.notes.size() <= 4000
+        && request.resource.data.updatedAt == request.time;
     }
 
     match /chat_messages/{messageId} {
-      allow read, update, delete: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow get, list: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
       allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['userId', 'chatType', 'propertyId', 'role', 'text', 'timestamp'])
+        && request.resource.data.keys().hasAll(['userId', 'chatType', 'role', 'text', 'timestamp'])
         && request.resource.data.userId == request.auth.uid
+        && request.resource.data.chatType in ['ile_ai', 'property_agent']
         && request.resource.data.role in ['user', 'model', 'agent']
-        && request.resource.data.text is string
-        && request.resource.data.text.size() <= 12000;
+        && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 12000
+        && request.resource.data.timestamp == request.time
+        && (!('propertyId' in request.resource.data) || (request.resource.data.propertyId is string && request.resource.data.propertyId.size() <= 128));
+      // Messages are append-only for owners; trusted admins may repair/delete records.
+      allow update: if isAdmin()
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'text'])
+        && request.resource.data.role in ['user', 'model', 'agent']
+        && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 12000;
+      allow delete: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
     }
 
     match /verifications/{verificationId} {
-      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow get, list: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
       allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['userId', 'titleNumber', 'storagePath', 'status', 'propertyId', 'createdAt'])
+        && request.resource.data.keys().hasAll(['userId', 'titleNumber', 'storagePath', 'status', 'createdAt'])
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.titleNumber is string
-        && request.resource.data.titleNumber.size() <= 100
-        && request.resource.data.documentUrl is string
-        && request.resource.data.documentUrl.matches('https://firebasestorage.googleapis.com/.*')
+        && request.resource.data.titleNumber.size() > 0 && request.resource.data.titleNumber.size() <= 100
+        && request.resource.data.storagePath is string
+        && request.resource.data.storagePath.size() <= 300
+        && request.resource.data.storagePath.matches('titles/' + request.auth.uid + '/[A-Za-z0-9._-]{1,200}')
         && request.resource.data.createdAt == request.time
-        && request.resource.data.keys().hasOnly(['userId', 'titleNumber', 'documentUrl', 'status', 'propertyId', 'createdAt'])
         && (!('propertyId' in request.resource.data)
-          || (exists(/databases/$(database)/documents/properties/$(request.resource.data.propertyId))
+          || (request.resource.data.propertyId is string
+            && exists(/databases/$(database)/documents/properties/$(request.resource.data.propertyId))
             && get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.ownerId == request.auth.uid));
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.titleNumber == resource.data.titleNumber
+        && request.resource.data.storagePath == resource.data.storagePath
+        && ((!('propertyId' in resource.data) && !('propertyId' in request.resource.data))
+          || (('propertyId' in resource.data) && ('propertyId' in request.resource.data)
+            && request.resource.data.propertyId == resource.data.propertyId))
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status in ['approved', 'rejected'];
+      allow delete: if isAdmin();
+    }
+
+    match /academy_progress/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(['userId', 'completedLessonIds', 'updatedAt'])
+        && request.resource.data.keys().hasAll(['userId', 'completedLessonIds', 'updatedAt'])
+        && request.resource.data.userId == userId
+        && request.resource.data.completedLessonIds is list
+        && request.resource.data.completedLessonIds.size() <= 1000
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completedLessonIds', 'updatedAt'])
+        && request.resource.data.completedLessonIds is list
+        && request.resource.data.completedLessonIds.size() <= 1000
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isOwner(userId);
     }
 
     match /{document=**} {

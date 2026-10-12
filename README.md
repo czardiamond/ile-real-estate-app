@@ -5,8 +5,8 @@ Ilé is a real-estate marketplace for account-based listing management, public l
 ## Implemented workflows
 
 - Firebase Authentication and user profiles
-- Public Firestore listings with owner-scoped create/update/delete permissions
-- Firebase Storage uploads for listing photos, video, floor plans and private title-review documents
+- Anonymous listing browse through an allowlisted `public_listings` projection; exact addresses and owner-only fields remain in `properties`
+- Firebase Storage uploads for up to five listing photos, one floor plan and private title-review documents; listings support up to five approved feature labels
 - Buyer enquiries routed to the listing owner’s Firestore inbox
 - AI-assisted listing drafts through the authenticated server endpoint
 - Internal Ilé document review, which is **not** a government registry search or legal opinion
@@ -31,6 +31,7 @@ Before building, check the source and production output:
 npm run lint
 npm run build
 npm run preview
+npm run test:rules
 ```
 
 The Firebase browser configuration is public client configuration, not an authorization secret. Keep its Firebase/Google API restrictions limited to the intended project and domains. Never put `GEMINI_API_KEY` in a `VITE_` variable or browser code.
@@ -38,15 +39,22 @@ The Firebase browser configuration is public client configuration, not an author
 ## Firebase setup
 
 1. Create or select the Firebase project and configure the web app values in `.env.local` (`VITE_FIREBASE_*`). Authentication providers used by the sign-in screen must be enabled, and the deployed website domains must be authorized.
-2. Enable Firestore and Firebase Storage.
-3. Select the intended project with the Firebase CLI (`firebase use --add`) and deploy the checked-in rules:
+2. Enable Firestore. Firebase Storage uploads are a separate project capability; this privacy change does not deploy Storage rules or configure billing.
+3. Before deploying the new client/rules, back up the target project and run the privacy migration in dry-run mode:
 
    ```bash
-   firebase deploy --only firestore:rules,storage --project YOUR_FIREBASE_PROJECT_ID
+   npm run migrate:firestore-privacy -- --project YOUR_FIREBASE_PROJECT_ID
    ```
 
-4. Admin access is granted only by a trusted backend-set Firebase Auth custom claim (`admin: true`). Never let a browser-selected role grant admin access.
-5. Audit existing Firestore documents before launch. Older public listing records may contain title/owner fields from the prototype; the new client no longer publishes or renders them, but existing data must be reviewed and scrubbed separately.
+   Review the counts and confirm the selected Firebase project. The script is read-only unless explicitly run with `--apply`; applying it normalizes legacy private listing fields (while retaining exact addresses only in private records), builds sanitized public projections, removes orphan or unprojectable public listings, sanitizes public profiles, and removes reusable title-download URLs only when a matching owner-scoped Storage path can be verified or safely recovered from the Firebase Storage URL. Other legacy title links are counted for manual review and left in the private collection. The script does not upload files or change Storage rules. After a backup and explicit authorization, apply the migration **before** deploying the new rules; inspect `skippedProperties` and removal counts and resolve any unexpected records.
+4. Only after the migration is applied and reviewed, deploy **Firestore only** (rules and indexes) to the selected project:
+
+   ```bash
+   firebase deploy --only firestore:rules,firestore:indexes --project YOUR_FIREBASE_PROJECT_ID
+   ```
+
+   Do not include `storage` in that command. Storage rules and any Storage billing decision remain separate.
+5. Admin access is granted only by a trusted backend-set Firebase Auth custom claim (`admin: true`). Never let a browser-selected role grant admin access.
 6. Set a retention/deletion process for accounts, enquiries and private title-review uploads. Confirm that title-document reviewers are authorized and can access the private Storage objects.
 
 ## Vercel deployment
@@ -66,7 +74,7 @@ The AI endpoint currently uses an in-memory per-function-instance rate limit. Be
 
 - Replace the in-app technical privacy summary with an owner-approved, jurisdiction-appropriate privacy notice and publish approved Terms of Service and a real support contact.
 - Confirm Firebase quotas, domain restrictions, email/password reset delivery, backups, logging and data-retention procedures.
-- Review and remove any legacy prototype records or assets that contain personal/title information or unsupported claims.
+- Back up and review legacy Firestore records before applying `scripts/migrate-firestore-privacy.mjs`; verify that no sensitive data remains in public projections.
 - Add a global AI rate limiter and monitor provider costs.
 - Keep payments, escrow, KYC, registry verification and notification delivery disabled until their providers and server-side authorization flows are implemented and tested.
 
