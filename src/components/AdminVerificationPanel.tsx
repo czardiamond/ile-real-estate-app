@@ -1,8 +1,8 @@
 // src/components/AdminVerificationPanel.tsx
 import React, { useEffect, useState } from 'react';
-import { db } from '../services/firebaseConfig';
+import { auth, db } from '../lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
-import { verifyProperty, markUserAsVerifiedSeller } from '../services/propertyService';
+import { verifyProperty } from '../services/propertyService';
 import { useToast } from '../context/ToastContext';
 
 export interface VerificationRecord {
@@ -69,12 +69,13 @@ export const AdminVerificationPanel: React.FC = () => {
 
       if (newStatus === 'approved') {
         if (verification.propertyId) {
-          await verifyProperty(verification.propertyId, true);
+          const reviewerId = auth.currentUser?.uid;
+          if (!reviewerId) throw new Error('Sign in with an administrator account to review documents.');
+          await verifyProperty(verification.propertyId, true, { adminId: reviewerId });
         }
-        await markUserAsVerifiedSeller(verification.userId, true);
         toast.success(
-          'Title Approved',
-          `Title ${verification.titleNumber} approved. Property verified & seller marked as trusted.`
+          'Document marked reviewed',
+          'Ilé recorded an internal document review. This is not a government registry result, identity check, or legal opinion.'
         );
       } else {
         toast.info(
@@ -100,14 +101,14 @@ export const AdminVerificationPanel: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-gray-900">Admin Title Verification Console</h2>
+            <h2 className="text-xl font-bold text-gray-900">Ilé Document Review Console</h2>
             <span className="flex h-2.5 w-2.5 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
             <span className="text-xs text-emerald-600 font-semibold tracking-wide uppercase">Live</span>
           </div>
-          <p className="text-xs text-gray-500">Real-time stream of incoming land title verification requests.</p>
+          <p className="text-xs text-gray-500">Private queue of files submitted for internal review. No government registry integration is connected.</p>
         </div>
       </div>
 

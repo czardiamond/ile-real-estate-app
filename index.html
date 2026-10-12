@@ -3,54 +3,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
-    <title>Ilé - Find Your Space</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ilé — Real Estate Marketplace</title>
+    <meta name="description" content="Discover and manage real-estate listings, connect with property owners, and create AI-assisted listing drafts with Ilé." />
+    <meta name="theme-color" content="#F8F9FA" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,wght@0,400;0,500;0,700;1,400;1,500;1,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              // Google Material 3 Token Simulation with Dynamic CSS Variable Support
-              primary: '#4285F4', // Google Blue
-              'primary-container': 'var(--color-primary-container, #D2E3FC)',
-              'on-primary-container': 'var(--color-on-primary-container, #174EA6)',
-              
-              secondary: '#34A853', // Google Green
-              'secondary-container': 'var(--color-secondary-container, #CEEAD6)',
-              'on-secondary-container': 'var(--color-on-secondary-container, #0D652D)',
-              
-              tertiary: '#FBBC05', // Google Yellow
-              'tertiary-container': '#FEF7E0',
-              'on-tertiary-container': '#AF5C00',
-
-              error: '#EA4335', // Google Red
-              
-              surface: 'var(--color-surface, #F8F9FA)', 
-              'surface-container-low': 'var(--color-surface-container-low, #FFFFFF)',
-              'surface-container': 'var(--color-surface-container, #F1F3F4)', 
-              'surface-container-high': 'var(--color-surface-container-high, #E8EAED)', 
-              
-              'on-surface': 'var(--color-on-surface, #202124)', 
-              'on-surface-variant': 'var(--color-on-surface-variant, #5F6368)', 
-              outline: 'var(--color-outline, #DADCE0)', 
-              'outline-variant': 'var(--color-outline-variant, #E8EAED)',
-            },
-            fontFamily: {
-              sans: ['"Google Sans"', 'Roboto', 'Inter', 'sans-serif'],
-            },
-            borderRadius: {
-              '4xl': '32px', // Material 3 Extra Large
-            }
-          },
-        },
-      }
-    </script>
     <style>
       :root {
         --color-surface: #F8F9FA;

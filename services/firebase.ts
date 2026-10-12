@@ -1,6 +1,6 @@
-import { db } from '../src/lib/firebase';
-import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, addDoc, orderBy, limit } from 'firebase/firestore';
-import type { User } from '../types';
+import { auth, db } from '../src/lib/firebase';
+import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, addDoc, orderBy, limit, writeBatch, updateDoc, serverTimestamp, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import type { User, Lead, LeadStatus } from '../types';
 
 export { db };
 
@@ -28,6 +28,14 @@ export interface FirestoreChatMessage {
   timestamp: string;
 }
 
+export interface AgentDirectoryProfile {
+  id: string;
+  name: string;
+  role: User['role'];
+  agencyName?: string;
+  avatarUrl?: string;
+}
+
 const ALERTS_COLLECTION = 'property_alerts';
 const USERS_COLLECTION = 'users';
 const CHAT_COLLECTION = 'chat_messages';
@@ -36,10 +44,10 @@ const CHAT_COLLECTION = 'chat_messages';
  * Checks connectivity to Firestore database
  */
 export async function checkFirestoreSyncStatus(): Promise<boolean> {
+  const user = auth.currentUser;
+  if (!user) return false;
   try {
-    // Quick read test on a dummy doc or collection
-    const testDoc = doc(db, '_health', 'status');
-    await getDoc(testDoc);
+    await getDoc(doc(db, USERS_COLLECTION, user.uid));
     return true;
   } catch (err) {
     console.warn('Firestore status check:', err);
@@ -57,14 +65,24 @@ export async function saveUserProfileToFirestore(user: User): Promise<boolean> {
       ...user,
       updatedAt: new Date().toISOString()
     };
-    await setDoc(userRef, dataToSave, { merge: true });
+    const publicProfile = {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      agencyName: user.agencyName || '',
+      avatarUrl: user.avatarUrl || '',
+      updatedAt: dataToSave.updatedAt,
+    };
+    const batch = writeBatch(db);
+    batch.set(userRef, dataToSave, { merge: true });
+    batch.set(doc(db, 'public_profiles', user.id), publicProfile, { merge: true });
+    await batch.commit();
 
     // LocalStorage cache
     localStorage.setItem(`ile_user_profile_${user.id}`, JSON.stringify(dataToSave));
     return true;
   } catch (err) {
-    console.warn('Firestore profile save error, falling back to local cache:', err);
-    localStorage.setItem(`ile_user_profile_${user.id}`, JSON.stringify(user));
+    console.warn('Firestore profile save failed:', err);
     return false;
   }
 }
@@ -173,17 +191,62 @@ export async function getChatHistoryFromFirestore(
  * Saves a WhatsApp or inbound property lead to Firestore
  */
 export async function saveLeadToFirestore(lead: any): Promise<boolean> {
+  const signedInUser = auth.currentUser;
+  if (!signedInUser || lead.buyerId !== signedInUser.uid) return false;
   try {
     const docRef = doc(db, 'leads', lead.id || `lead_${Date.now()}`);
     await setDoc(docRef, {
-      ...lead,
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
+      id: docRef.id,
+      buyerId: signedInUser.uid,
+      agentId: lead.agentId,
+      propertyId: lead.propertyId,
+      name: lead.name,
+      email: lead.email || '',
+      phone: lead.phone || '',
+      budget: Number(lead.budget) || 0,
+      value: Number(lead.value) || 0,
+      notes: String(lead.notes || '').slice(0, 4000),
+      status: 'New Arrival',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
     return true;
   } catch (err) {
     console.warn('Firestore save lead error:', err);
     return false;
   }
+}
+
+export async function getAgentLeads(agentId: string): Promise<Lead[]> {
+  const user = auth.currentUser;
+  if (!user || user.uid !== agentId) throw new Error('You can only access your own lead inbox.');
+  const snapshot = await getDocs(query(collection(db, 'leads'), where('agentId', '==', agentId)));
+  return snapshot.docs
+    .map(item => ({ id: item.id, ...(item.data() as object) } as Lead))
+    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+}
+
+export function subscribeAgentLeads(agentId: string, onUpdate: (leads: Lead[]) => void, onError?: (error: Error) => void): Unsubscribe {
+  const user = auth.currentUser;
+  if (!user || user.uid !== agentId) throw new Error('You can only subscribe to your own lead inbox.');
+  const q = query(collection(db, 'leads'), where('agentId', '==', agentId));
+  return onSnapshot(q, snapshot => {
+    const leads = snapshot.docs.map(item => {
+      const data = item.data();
+      const createdAt = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (typeof data.createdAt === 'string' ? data.createdAt : '');
+      return { id: item.id, ...data, createdAt } as Lead;
+    }).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    onUpdate(leads);
+  }, error => onError?.(error));
+}
+
+export async function updateAgentLeadStatus(leadId: string, status: LeadStatus): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Sign in to update an enquiry.');
+  const leadRef = doc(db, 'leads', leadId);
+  const lead = await getDoc(leadRef);
+  if (!lead.exists() || lead.data().agentId !== user.uid) throw new Error('You do not have access to this enquiry.');
+  await updateDoc(leadRef, { status, updatedAt: serverTimestamp() });
 }
 
 /**
@@ -206,11 +269,11 @@ export async function savePropertyAlertPreference(pref: PropertyAlertPreference)
 
     return true;
   } catch (err) {
-    console.warn('Firestore save error, falling back to local persistence:', err);
+    console.warn('Firestore alert save failed; preserving an offline draft:', err);
     const stored = JSON.parse(localStorage.getItem('ile_property_alerts') || '{}');
     stored[docId] = { ...pref, id: docId, updatedAt: new Date().toISOString() };
     localStorage.setItem('ile_property_alerts', JSON.stringify(stored));
-    return true;
+    return false;
   }
 }
 
@@ -254,14 +317,14 @@ export async function removePropertyAlertPreference(userId: string, propertyId: 
 /**
  * Fetches all agents under a specific brokerage/agency
  */
-export async function getAgentsByAgency(agencyName: string): Promise<User[]> {
+export async function getAgentsByAgency(agencyName: string): Promise<AgentDirectoryProfile[]> {
   try {
-    const colRef = collection(db, USERS_COLLECTION);
+    const colRef = collection(db, 'public_profiles');
     const q = query(colRef, where('agencyName', '==', agencyName));
     const snap = await getDocs(q);
     if (!snap.empty) {
-      const agents: User[] = [];
-      snap.forEach(d => agents.push(d.data() as User));
+      const agents: AgentDirectoryProfile[] = [];
+      snap.forEach(d => agents.push(d.data() as AgentDirectoryProfile));
       return agents;
     }
   } catch (err) {
@@ -271,19 +334,12 @@ export async function getAgentsByAgency(agencyName: string): Promise<User[]> {
 }
 
 /**
- * Updates agent permissions within a brokerage
+ * Client-side users cannot change another user's permissions. A trusted server/admin workflow is required.
  */
 export async function updateUserPermissions(
   userId: string,
   updates: { brokerageRole?: 'Standard' | 'Manager'; isActive?: boolean }
 ): Promise<boolean> {
-  try {
-    const userRef = doc(db, USERS_COLLECTION, userId);
-    await setDoc(userRef, { ...updates, updatedAt: new Date().toISOString() }, { merge: true });
-    return true;
-  } catch (err) {
-    console.warn('Firestore update agent permissions note:', err);
-    return false;
-  }
+  console.warn('Agent permission changes require a trusted administrative workflow.', userId, updates);
+  return false;
 }
-

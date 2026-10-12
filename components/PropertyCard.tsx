@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Property, PropertyType } from '../types';
-import { MapPin, Bed, Bath, Users, CheckCircle, Maximize2, ShieldCheck, Crown, MessageCircle, Box, LayoutTemplate, Check, Scale, Play, ImageOff, Heart } from 'lucide-react';
+import { MapPin, Bed, Bath, Users, Maximize2, ShieldCheck, MessageCircle, Box, Check, Scale, Play, ImageOff, Heart } from 'lucide-react';
 
 interface PropertyCardProps {
   property: Property;
@@ -18,12 +18,12 @@ interface PropertyCardProps {
   onToggleSave?: () => void;
 }
 
-const PropertyCard: React.FC<PropertyCardProps> = ({ 
-  property, 
-  onClick, 
-  onChat, 
-  onView3D, 
-  onViewFloorPlan, 
+const PropertyCard: React.FC<PropertyCardProps> = ({
+  property,
+  onClick,
+  onChat,
+  onView3D,
+  onViewFloorPlan,
   onCompare,
   isSelectable = false,
   isSelected = false,
@@ -37,41 +37,20 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
   };
 
   const isOwambe = [
-    PropertyType.EVENT_CENTER, 
-    PropertyType.WEDDING_HALL, 
-    PropertyType.PARTY_VENUE, 
+    PropertyType.EVENT_CENTER,
+    PropertyType.WEDDING_HALL,
+    PropertyType.PARTY_VENUE,
     PropertyType.OPEN_FIELD
   ].includes(property.type);
 
   const isBusiness = [
-    PropertyType.OFFICE, 
-    PropertyType.SHOP, 
-    PropertyType.WAREHOUSE, 
+    PropertyType.OFFICE,
+    PropertyType.SHOP,
+    PropertyType.WAREHOUSE,
     PropertyType.CONTAINER
   ].includes(property.type);
 
   const isHighlighted = isSelected || isCompared;
-
-  // Mock Agent Data based on ID (Consistent visualization)
-  const getAgentInfo = (id: string) => {
-      // Deterministic pseudo-random based on char code sum
-      const sum = id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      const avatars = [
-          'https://ui-avatars.com/api/?name=Kunle+Adebayo&background=random',
-          'https://ui-avatars.com/api/?name=Chioma+Nwosu&background=random',
-          'https://ui-avatars.com/api/?name=Emeka+Okonkwo&background=random'
-      ];
-      const names = ['Kunle Adebayo', 'Chioma Nwosu', 'Emeka Okonkwo'];
-      const index = sum % avatars.length;
-      
-      return {
-          name: names[index],
-          avatar: avatars[index],
-          verified: true
-      };
-  };
-
-  const agent = getAgentInfo(property.agentId);
 
   // Handles fetching and displaying property media (Images & Video)
   const renderPropertyMedia = () => {
@@ -82,15 +61,15 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
     return (
       <>
         {imageUrl ? (
-          <img 
-            src={imageUrl} 
-            alt={property.title} 
+              <img
+                src={imageUrl}
+            alt={property.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
             loading="lazy"
             onError={(e) => {
               const target = e.target as HTMLImageElement;
-              target.onerror = null; 
-              target.src = "https://placehold.co/600x400/f3f4f6/9ca3af?text=No+Image";
+              target.onerror = null;
+              target.src = "/property-placeholder.svg";
             }}
           />
         ) : (
@@ -106,7 +85,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
         {/* Video Play Button Overlay */}
         {hasVideo && (
             <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-                <div 
+                <div
                     className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center border border-white/40 shadow-lg group-hover:scale-110 transition-transform duration-300"
                 >
                     <Play size={16} className="text-white fill-white ml-1" />
@@ -118,15 +97,15 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
   };
 
   return (
-    <div 
+    <div
       onClick={onClick}
       className={`bg-white transition-all cursor-pointer group flex flex-col h-full relative overflow-hidden border ${
-        compact 
-          ? 'rounded-2xl p-2 shadow-sm border-gray-100' 
+        compact
+          ? 'rounded-2xl p-2 shadow-sm border-gray-100'
           : 'rounded-3xl shadow-sm hover:shadow-xl border-gray-100'
       } ${
-        isHighlighted 
-        ? 'ring-2 ring-primary' 
+        isHighlighted
+        ? 'ring-2 ring-primary'
         : ''
       }`}
     >
@@ -134,8 +113,8 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
       {(isSelectable || isHighlighted) && (
           <div className="absolute top-4 left-4 z-20 animate-in fade-in duration-200">
               <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors shadow-sm ${
-                  isHighlighted 
-                  ? 'bg-primary border-primary' 
+                  isHighlighted
+                  ? 'bg-primary border-primary'
                   : 'bg-white/90 border-gray-400'
               }`}>
                   {isHighlighted && <Check size={14} className="text-white" strokeWidth={3} />}
@@ -145,18 +124,18 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
 
       {/* Image Container */}
       <div className={`relative w-full bg-surface-container overflow-hidden ${compact ? 'h-36 rounded-2xl mb-3' : 'h-72'}`}>
-        
+
         {renderPropertyMedia()}
-        
+
         {/* Floating Tag */}
         <div className="flex items-center gap-1.5 absolute top-4 left-4 z-10">
           <div className={`bg-white/90 backdrop-blur-md rounded-full font-bold text-on-surface shadow-sm transition-all ${compact ? 'px-2.5 py-0.5 text-[10px]' : 'px-3.5 py-1.5 text-xs uppercase tracking-widest'}`}>
               {property.type}
           </div>
           {property.isVerified && (
-            <div className={`bg-emerald-600 text-white rounded-full font-bold shadow-sm flex items-center gap-1 ${compact ? 'px-2 py-0.5 text-[9px]' : 'px-2.5 py-1 text-[11px]'}`} title="Verified Land Title & Seller">
+            <div className={`bg-emerald-700 text-white rounded-full font-bold shadow-sm flex items-center gap-1 ${compact ? 'px-2 py-0.5 text-[9px]' : 'px-2.5 py-1 text-[11px]'}`} title="Ilé has recorded an internal document review. This is not a government title search.">
               <ShieldCheck size={compact ? 10 : 13} />
-              <span>Verified</span>
+              <span>Ilé reviewed</span>
             </div>
           )}
         </div>
@@ -170,7 +149,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
                 <Heart size={18} className={`transition-colors ${isSaved ? 'text-red-500 fill-red-500' : 'text-white group-hover/heart:text-red-500'}`} />
             </button>
         )}
-        
+
         {/* 3D Tour Button Overlay */}
         {property.virtualTourUrl && !compact && (
             <button
@@ -189,10 +168,10 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
              </div>
         )}
       </div>
-      
+
       {/* Content */}
       <div className={`flex-1 flex flex-col ${compact ? 'px-2 pb-2' : 'p-8 pt-6'}`}>
-        
+
         {/* Header Section */}
         <div className="flex justify-between items-start mb-4">
             <div className="flex-1 min-w-0">
@@ -200,7 +179,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
                     <h2 className="text-3xl font-light text-primary mb-2 tracking-tight">
                         {formatCurrency(property.price)}
                         <span className="text-sm text-on-surface-variant/60 font-normal ml-2">
-                             {property.period !== 'total' ? `/ ${property.period.replace('per ', '')}` : ''}
+                             {property.period && property.period !== 'total' ? `/ ${property.period.replace('per ', '')}` : ''}
                         </span>
                     </h2>
                 )}
@@ -209,7 +188,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
                 </h3>
             </div>
         </div>
-        
+
         {/* Location */}
         <div className={`flex items-center text-on-surface-variant/70 mb-6 ${compact ? 'text-[10px]' : 'text-sm font-light'}`}>
             <MapPin size={compact ? 10 : 14} className="mr-1.5 opacity-50 shrink-0" />
@@ -221,19 +200,19 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
             {!isBusiness && !isOwambe && (
                 <>
                     <div className="flex items-center gap-2">
-                        <Bed size={compact ? 12 : 16} strokeWidth={1.5} /> 
-                        <span>{property.specs.bedrooms}</span>
+                        <Bed size={compact ? 12 : 16} strokeWidth={1.5} />
+                        <span>{property.specs.bedrooms ?? '—'}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Bath size={compact ? 12 : 16} strokeWidth={1.5} /> 
-                        <span>{property.specs.bathrooms}</span>
+                        <Bath size={compact ? 12 : 16} strokeWidth={1.5} />
+                        <span>{property.specs.bathrooms ?? '—'}</span>
                     </div>
                 </>
             )}
             {(isOwambe || isBusiness) && (
                     <div className="flex items-center gap-2">
-                    {isOwambe ? <Users size={compact ? 12 : 16} strokeWidth={1.5} /> : <Maximize2 size={compact ? 12 : 16} strokeWidth={1.5} />} 
-                    <span>{isOwambe ? property.specs.capacity : property.specs.sizeSqM} {isOwambe ? 'Guests' : 'm²'}</span>
+                    {isOwambe ? <Users size={compact ? 12 : 16} strokeWidth={1.5} /> : <Maximize2 size={compact ? 12 : 16} strokeWidth={1.5} />}
+                    <span>{(isOwambe ? property.specs.capacity : property.specs.sizeSqM) ?? '—'} {isOwambe ? 'Guests' : 'm²'}</span>
                 </div>
             )}
         </div>
@@ -241,17 +220,12 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
         {/* Footer: Agent & Actions */}
         {!compact && (
             <div className="mt-auto flex items-center justify-between pt-6 border-t border-outline-variant/10">
-                 {/* Agent Info */}
+                 {/* Listing owner info */}
                  <div className="flex items-center gap-3">
-                     <div className="relative">
-                        <img src={agent.avatar} alt={agent.name} className="w-10 h-10 rounded-full bg-surface-container object-cover grayscale hover:grayscale-0 transition-all" />
-                        <div className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow-sm">
-                            <CheckCircle size={12} className="text-primary" />
-                        </div>
-                     </div>
+                     <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant"><Users size={18} /></div>
                      <div className="flex flex-col">
-                         <span className="text-xs font-medium text-on-surface">{agent.name}</span>
-                         <span className="text-[10px] text-on-surface-variant/60 uppercase tracking-widest">Verified Agent</span>
+                         <span className="text-xs font-medium text-on-surface">Listing owner</span>
+                         <span className="text-[10px] text-on-surface-variant/60 uppercase tracking-widest">Ilé account</span>
                      </div>
                  </div>
 
@@ -261,15 +235,15 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
                          <button
                             onClick={(e) => { e.stopPropagation(); onCompare && onCompare(property); }}
                             className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
-                                isCompared 
-                                ? 'bg-primary-container text-primary border-primary' 
+                                isCompared
+                                ? 'bg-primary-container text-primary border-primary'
                                 : 'bg-white border-gray-200 text-gray-400 hover:text-gray-900 hover:border-gray-300'
                             }`}
                             title="Compare"
                          >
                              <Scale size={14} />
                          </button>
-                         <button 
+                         <button
                             onClick={(e) => { e.stopPropagation(); onChat && onChat(property); }}
                             className="bg-gray-900 text-white px-4 py-2 rounded-full text-xs font-bold hover:bg-black transition-colors flex items-center gap-1"
                         >

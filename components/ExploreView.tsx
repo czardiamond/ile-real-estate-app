@@ -1,11 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { MOCK_PROPERTIES } from '../services/mockData';
 import PropertyCard from './PropertyCard';
 import CompareModal from './CompareModal';
 import { Property, PropertyType, FloodRisk } from '../types';
 import { Search, Filter, Home, GlassWater, PartyPopper, Briefcase, Map as MapIcon, X, Car, Zap, Check, ChevronDown, Waves, List, Bed, Bath, Armchair, Sparkles, Scale, Locate, ArrowUpDown, Calendar, DollarSign, Calculator, Flame } from 'lucide-react';
-import { PriceHeatmap } from './PriceHeatmap';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -44,7 +42,7 @@ const MapUpdater: React.FC<{ properties: Property[] }> = ({ properties }) => {
             const latLngs = properties
                 .filter(p => p.coordinates)
                 .map(p => [p.coordinates!.lat, p.coordinates!.lng] as [number, number]);
-            
+
             if (latLngs.length > 0) {
                 const bounds = L.latLngBounds(latLngs);
                 // Add padding to bounds
@@ -75,7 +73,7 @@ const LocateControl = () => {
     };
 
     return (
-        <button 
+        <button
             onClick={handleLocate}
             className="absolute top-4 right-4 z-[400] bg-white p-3 rounded-full shadow-lg border border-gray-100 text-gray-700 hover:bg-gray-50 hover:text-primary transition-all"
             title="Locate Me"
@@ -85,11 +83,11 @@ const LocateControl = () => {
     );
 };
 
-const ExploreView: React.FC<ExploreViewProps> = ({ 
+const ExploreView: React.FC<ExploreViewProps> = ({
     properties,
-    onPropertySelect, 
-    onChat, 
-    onView3D, 
+    onPropertySelect,
+    onChat,
+    onView3D,
     onViewFloorPlan,
     savedPropertyIds,
     onToggleSave,
@@ -97,9 +95,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('All');
-  const [viewMode, setViewMode] = useState<'list' | 'map' | 'heatmap'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [selectedMapPin, setSelectedMapPin] = useState<Property | null>(null);
-  
+
   // Filter State
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000000000]); // Max 1B
@@ -109,7 +107,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
   const [filterFloodRisk, setFilterFloodRisk] = useState<string>('');
   const [filterPropertyTypes, setFilterPropertyTypes] = useState<string[]>([]);
   const [sortOption, setSortOption] = useState<string>('newest'); // 'newest', 'price_asc', 'price_desc'
-  
+
   // Residential Filters
   const [minBedrooms, setMinBedrooms] = useState(0);
   const [minBathrooms, setMinBathrooms] = useState(0);
@@ -140,16 +138,16 @@ const ExploreView: React.FC<ExploreViewProps> = ({
   }, [activeCategory]);
 
   const sourceProperties = useMemo(() => {
-    return properties && properties.length > 0 ? properties : MOCK_PROPERTIES;
+    return properties || [];
   }, [properties]);
 
   const filteredProperties = useMemo(() => {
     let result = sourceProperties.filter(p => {
       // 1. Search Term
-      const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             p.location.area.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             p.location.city.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       // 2. Category
       let matchesCategory = true;
       if (activeCategory === 'Living') {
@@ -181,9 +179,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       let matchesGen = true;
       if (reqGenerator) {
          // Check for keywords in features or if power hours are high (>18h/day)
-         const hasGenFeature = p.features.some(f => 
-             f.toLowerCase().includes('generator') || 
-             f.toLowerCase().includes('inverter') || 
+         const hasGenFeature = p.features.some(f =>
+             f.toLowerCase().includes('generator') ||
+             f.toLowerCase().includes('inverter') ||
              f.toLowerCase().includes('solar') ||
              f.toLowerCase().includes('power')
          );
@@ -283,7 +281,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
   };
 
   const togglePropertyType = (type: string) => {
-      setFilterPropertyTypes(prev => 
+      setFilterPropertyTypes(prev =>
           prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
       );
   };
@@ -337,7 +335,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
       `}</style>
-      
+
       {/* Search & Categories Header */}
       <div className="px-4 md:px-8 mb-6 bg-surface py-3 transition-all border-b border-outline-variant/30">
         <div className="max-w-6xl mx-auto space-y-4">
@@ -346,7 +344,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
             {/* Search Input Box with Sparkles & Filter */}
             <div className="relative flex-1 w-full bg-surface-container-low dark:bg-slate-900 rounded-full border border-outline-variant/60 shadow-sm hover:shadow-md focus-within:shadow-md focus-within:border-primary transition-all flex items-center px-4 py-1.5">
               <Search className="text-on-surface-variant/60 shrink-0 mr-2" size={20} />
-              <input 
+              <input
                 type="text"
                 placeholder="Search Lekki, Wuse, Duplex, Short-let..."
                 value={searchTerm}
@@ -354,11 +352,11 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                 className="w-full bg-transparent border-none outline-none text-on-surface placeholder:text-on-surface-variant/50 text-sm font-medium py-2"
               />
               <div className="flex items-center gap-1 shrink-0 ml-2 pl-2 border-l border-outline-variant/40">
-                <button 
+                <button
                   onClick={() => setIsFilterOpen(true)}
                   className={`p-2 rounded-full transition-colors flex items-center gap-1.5 ${
-                    isFilterActive 
-                    ? 'bg-primary/10 text-primary font-semibold' 
+                    isFilterActive
+                    ? 'bg-primary/10 text-primary font-semibold'
                     : 'text-on-surface-variant hover:bg-surface-container'
                   }`}
                   title="Filter Properties"
@@ -373,11 +371,11 @@ const ExploreView: React.FC<ExploreViewProps> = ({
             <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar py-1">
               {/* View Switchers */}
               <div className="flex items-center gap-1 bg-surface-container p-1 rounded-full border border-outline-variant/40 shadow-inner shrink-0">
-                <button 
+                <button
                   onClick={() => setViewMode('list')}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                    viewMode === 'list' 
-                    ? 'bg-primary text-white shadow-sm' 
+                    viewMode === 'list'
+                    ? 'bg-primary text-white shadow-sm'
                     : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
@@ -385,11 +383,11 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                   <span>List</span>
                 </button>
 
-                <button 
+                <button
                   onClick={() => setViewMode('map')}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                    viewMode === 'map' 
-                    ? 'bg-primary text-white shadow-sm' 
+                    viewMode === 'map'
+                    ? 'bg-primary text-white shadow-sm'
                     : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
@@ -397,26 +395,14 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                   <span>Map</span>
                 </button>
 
-                <button 
-                  onClick={() => setViewMode('heatmap')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                    viewMode === 'heatmap' 
-                    ? 'bg-amber-600 text-white shadow-sm' 
-                    : 'text-amber-700 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
-                  }`}
-                  title="Google Maps Price Valuation Heatmap"
-                >
-                  <Flame size={15} className="animate-pulse" />
-                  <span>Heatmap</span>
-                </button>
               </div>
 
               {/* Compare Mode Toggle */}
               <button
                 onClick={() => setIsCompareMode(!isCompareMode)}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 shrink-0 ${
-                  isCompareMode 
-                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm' 
+                  isCompareMode
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
                   : 'bg-surface-container-low border-outline-variant/60 text-on-surface hover:bg-surface-container'
                 }`}
               >
@@ -430,7 +416,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
               </button>
 
               {/* Mortgage Calculator Button */}
-              <button 
+              <button
                 onClick={onOpenMortgageCalculator}
                 className="p-2 rounded-full bg-surface-container-low text-primary border border-outline-variant/60 shadow-sm hover:bg-primary/10 transition-all shrink-0"
                 title="Mortgage Calculator"
@@ -450,7 +436,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                   onClick={() => { setActiveCategory(cat.id); setFilterPropertyTypes([]); }}
                   className={`flex items-center gap-2 text-sm font-semibold whitespace-nowrap transition-all relative py-1 px-3 rounded-full ${
                     isActive
-                    ? 'bg-primary text-white shadow-xs' 
+                    ? 'bg-primary text-white shadow-xs'
                     : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
                   }`}
                 >
@@ -466,7 +452,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       {compareList.length > 0 && (
           <div className="fixed bottom-20 md:bottom-8 left-0 right-0 z-40 flex justify-center pointer-events-none px-4">
               <div className="bg-gray-900 text-white p-2 pr-4 rounded-full shadow-2xl flex items-center gap-3 pointer-events-auto animate-in slide-in-from-bottom-10 fade-in duration-300 border border-gray-800">
-                
+
                 {/* Thumbnails */}
                 <div className="flex -space-x-3 pl-1">
                     {compareList.map(p => (
@@ -488,19 +474,19 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                     <span className="text-sm font-bold">{compareList.length} of 3</span>
                 </div>
 
-                <button 
+                <button
                     onClick={() => setShowCompareModal(true)}
                     disabled={compareList.length < 2}
                     className={`ml-2 px-5 py-2 rounded-full font-bold text-sm transition-all ${
-                        compareList.length >= 2 
-                        ? 'bg-white text-gray-900 hover:bg-gray-200' 
+                        compareList.length >= 2
+                        ? 'bg-white text-gray-900 hover:bg-gray-200'
                         : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                     }`}
                 >
                     View
                 </button>
-                
-                <button 
+
+                <button
                     onClick={() => setCompareList([])}
                     className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 text-gray-400 transition-colors"
                 >
@@ -512,9 +498,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
       {/* View Content */}
       <div className="px-4 md:px-8 h-full max-w-[1600px] mx-auto">
-        {viewMode === 'heatmap' ? (
-             <PriceHeatmap onPropertySelect={handlePropertyClick} />
-        ) : viewMode === 'list' ? (
+        {viewMode === 'list' ? (
              /* LIST VIEW */
             filteredProperties.length === 0 ? (
                 <div className="text-center py-20 flex flex-col items-center">
@@ -523,7 +507,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                     </div>
                     <h3 className="text-xl font-bold text-gray-900">No spaces found here</h3>
                     <p className="text-gray-500 max-w-xs mx-auto mt-2">Try adjusting your search area or filters to find what you're looking for.</p>
-                    <button 
+                    <button
                     onClick={resetFilters}
                     className="mt-6 px-6 py-3 bg-primary text-white rounded-full font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
                     >
@@ -534,9 +518,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 pb-24">
                     {filteredProperties.map(property => (
                         <div key={property.id} className="h-full">
-                            <PropertyCard 
-                                property={property} 
-                                onClick={() => handlePropertyClick(property)} 
+                            <PropertyCard
+                                property={property}
+                                onClick={() => handlePropertyClick(property)}
                                 onChat={() => onChat(property)}
                                 onView3D={() => onView3D(property)}
                                 onViewFloorPlan={() => onViewFloorPlan(property)}
@@ -554,9 +538,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
         ) : (
             /* REAL MAP VIEW */
             <div className="relative w-full h-[60vh] md:h-[calc(100vh-240px)] rounded-[32px] overflow-hidden border border-outline-variant/20 shadow-xl">
-                <MapContainer 
-                    center={[6.5244, 3.3792]} // Default Lagos
-                    zoom={12} 
+                <MapContainer
+                    center={[9.082, 8.675]} // Nigeria-wide initial view; only listing coordinates receive markers.
+                    zoom={6}
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={false}
                 >
@@ -564,40 +548,27 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                     />
-                    
+
                     {/* Auto-Zoom to Pins */}
                     <MapUpdater properties={filteredProperties} />
-                    
-                    {/* Locate Me Control */}
-                    {/* Map Overlay Controls - Elegant Chips */}
+
+                    {/* Map attribution and listing-only context */}
                     <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[400] w-full max-w-2xl px-4">
-                        <div className="bg-white/90 backdrop-blur-xl p-2 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-white/20 flex items-center justify-center gap-3 overflow-x-auto no-scrollbar">
-                            {['Restaurants', 'Schools', 'Hospitals', 'Parks', 'Banks'].map((place) => (
-                                <button 
-                                    key={place}
-                                    className="px-6 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 hover:bg-primary hover:text-white transition-all whitespace-nowrap flex items-center gap-2"
-                                >
-                                    {place === 'Restaurants' && <GlassWater size={14} strokeWidth={1.5} />}
-                                    {place === 'Schools' && <Briefcase size={14} strokeWidth={1.5} />}
-                                    {place === 'Hospitals' && <Check size={14} strokeWidth={1.5} />}
-                                    {place === 'Parks' && <Waves size={14} strokeWidth={1.5} />}
-                                    {place === 'Banks' && <DollarSign size={14} strokeWidth={1.5} />}
-                                    {place}
-                                </button>
-                            ))}
+                        <div className="bg-white/90 backdrop-blur-xl px-4 py-3 rounded-2xl shadow-lg border border-white/20 text-xs text-gray-700 text-center">
+                          Map pins show published listings with seller-provided coordinates. No neighborhood or price-density data is currently connected.
                         </div>
                     </div>
-            
+
             <LocateControl />
 
                     {/* Property Pins */}
                     {filteredProperties.filter(p => p.coordinates).map(p => {
                          if (!p.coordinates) return null;
                          const isSelected = selectedMapPin?.id === p.id;
-                         
+
                          return (
-                            <Marker 
-                                key={p.id} 
+                            <Marker
+                                key={p.id}
                                 position={[p.coordinates.lat, p.coordinates.lng]}
                                 icon={createPriceIcon(p, isSelected)}
                                 eventHandlers={{
@@ -616,24 +587,24 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
                 {/* Selected Property Overlay Card */}
                 {selectedMapPin && (
-                    <div 
+                    <div
                         className="absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-80 z-[1000] pointer-events-auto"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div 
+                        <div
                             className="relative animate-in slide-in-from-bottom fade-in duration-300"
                         >
-                            <button 
+                            <button
                                 onClick={(e) => {
-                                    e.stopPropagation(); 
+                                    e.stopPropagation();
                                     setSelectedMapPin(null);
-                                }} 
+                                }}
                                 className="absolute -top-3 -right-3 bg-white text-gray-800 rounded-full p-2 shadow-lg z-10 hover:bg-gray-100 transition-colors border border-gray-100"
                             >
                                 <X size={16} />
                             </button>
                             <div className="shadow-2xl rounded-[24px] border-4 border-white/50 bg-white">
-                                <PropertyCard 
+                                <PropertyCard
                                     property={selectedMapPin}
                                     onClick={() => handlePropertyClick(selectedMapPin)}
                                     onChat={() => onChat(selectedMapPin)}
@@ -680,8 +651,8 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                     key={opt.id}
                                     onClick={() => setSortOption(opt.id)}
                                     className={`px-4 py-2.5 rounded-xl border flex items-center gap-2 text-sm font-bold whitespace-nowrap transition-all ${
-                                        sortOption === opt.id 
-                                        ? 'bg-primary/10 border-primary text-primary' 
+                                        sortOption === opt.id
+                                        ? 'bg-primary/10 border-primary text-primary'
                                         : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                                     }`}
                                 >
@@ -725,19 +696,19 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                         <div className="flex gap-3">
                             <div className="flex-1 bg-white p-3 rounded-xl border border-gray-200 focus-within:border-primary transition-colors shadow-sm">
                                 <label className="block text-[10px] text-gray-400 uppercase font-bold">Min Price</label>
-                                <input 
-                                    type="number" 
-                                    value={priceRange[0]} 
-                                    onChange={(e) => setPriceRange([Number(e.target.value), priceRange[1]])} 
+                                <input
+                                    type="number"
+                                    value={priceRange[0]}
+                                    onChange={(e) => setPriceRange([Number(e.target.value), priceRange[1]])}
                                     className="w-full bg-transparent outline-none font-bold text-gray-900"
                                 />
                             </div>
                             <div className="flex-1 bg-white p-3 rounded-xl border border-gray-200 focus-within:border-primary transition-colors shadow-sm">
                                 <label className="block text-[10px] text-gray-400 uppercase font-bold">Max Price</label>
-                                <input 
-                                    type="number" 
-                                    value={priceRange[1]} 
-                                    onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])} 
+                                <input
+                                    type="number"
+                                    value={priceRange[1]}
+                                    onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])}
                                     className="w-full bg-transparent outline-none font-bold text-gray-900"
                                 />
                             </div>
@@ -751,7 +722,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                 <Home size={20} className="text-primary" />
                                 <span className="font-bold text-gray-900">House Specs</span>
                             </div>
-                            
+
                             <div className="grid grid-cols-2 gap-4 mb-4">
                                 {/* Bedrooms */}
                                 <div>
@@ -759,13 +730,13 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                         <Bed size={14} /> Bedrooms
                                     </label>
                                     <div className="flex items-center gap-1 bg-white p-1.5 rounded-full justify-between shadow-sm">
-                                        <button 
-                                            onClick={() => setMinBedrooms(Math.max(0, minBedrooms - 1))} 
+                                        <button
+                                            onClick={() => setMinBedrooms(Math.max(0, minBedrooms - 1))}
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >-</button>
                                         <span className="text-sm font-bold">{minBedrooms > 0 ? minBedrooms + '+' : 'Any'}</span>
-                                        <button 
-                                            onClick={() => setMinBedrooms(minBedrooms + 1)} 
+                                        <button
+                                            onClick={() => setMinBedrooms(minBedrooms + 1)}
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >+</button>
                                     </div>
@@ -776,13 +747,13 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                         <Bath size={14} /> Bathrooms
                                     </label>
                                     <div className="flex items-center gap-1 bg-white p-1.5 rounded-full justify-between shadow-sm">
-                                        <button 
-                                            onClick={() => setMinBathrooms(Math.max(0, minBathrooms - 1))} 
+                                        <button
+                                            onClick={() => setMinBathrooms(Math.max(0, minBathrooms - 1))}
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >-</button>
                                         <span className="text-sm font-bold">{minBathrooms > 0 ? minBathrooms + '+' : 'Any'}</span>
-                                        <button 
-                                            onClick={() => setMinBathrooms(minBathrooms + 1)} 
+                                        <button
+                                            onClick={() => setMinBathrooms(minBathrooms + 1)}
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >+</button>
                                     </div>
@@ -791,10 +762,10 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
                              {/* Furnished & Serviced Toggles */}
                              <div className="space-y-2">
-                                <div 
+                                <div
                                     className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
-                                        reqFurnished 
-                                        ? 'bg-primary border-primary text-white shadow-md' 
+                                        reqFurnished
+                                        ? 'bg-primary border-primary text-white shadow-md'
                                         : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 shadow-sm'
                                     }`}
                                     onClick={() => setReqFurnished(!reqFurnished)}
@@ -806,10 +777,10 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                     {reqFurnished && <Check size={16} />}
                                 </div>
 
-                                <div 
+                                <div
                                     className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
-                                        reqServiced 
-                                        ? 'bg-primary border-primary text-white shadow-md' 
+                                        reqServiced
+                                        ? 'bg-primary border-primary text-white shadow-md'
                                         : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 shadow-sm'
                                     }`}
                                     onClick={() => setReqServiced(!reqServiced)}
@@ -854,7 +825,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                 <PartyPopper size={20} className="text-secondary" />
                                 <span className="font-bold text-gray-900">Event Center Specs</span>
                             </div>
-                            
+
                             {/* Capacity Slider */}
                             <div className="mb-2">
                                 <div className="flex justify-between text-sm mb-3">
@@ -863,12 +834,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                         {minCapacity > 0 ? `${minCapacity}+ Guests` : 'Any Size'}
                                     </span>
                                 </div>
-                                <input 
-                                    type="range" 
-                                    min="0" 
-                                    max="5000" 
-                                    step="100" 
-                                    value={minCapacity} 
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="5000"
+                                    step="100"
+                                    value={minCapacity}
                                     onChange={(e) => setMinCapacity(Number(e.target.value))}
                                     className="w-full accent-secondary h-4 bg-white rounded-lg appearance-none cursor-pointer border border-gray-200"
                                 />
@@ -883,7 +854,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                     {/* General Facilities */}
                     <div>
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 block">Facilities & Amenities</label>
-                        
+
                         {/* Parking Stepper */}
                         <div className="flex items-center justify-between mb-6 p-1">
                             <div className="flex items-center gap-3 text-gray-900">
@@ -893,23 +864,23 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                 <span className="font-bold text-sm">Parking Spaces</span>
                             </div>
                             <div className="flex items-center gap-1 bg-white border border-gray-200 p-1.5 rounded-full shadow-sm">
-                                <button 
-                                    onClick={() => setMinParking(Math.max(0, minParking - 10))} 
+                                <button
+                                    onClick={() => setMinParking(Math.max(0, minParking - 10))}
                                     className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                 >-</button>
                                 <span className="w-12 text-center font-bold text-sm">{minParking}+</span>
-                                <button 
-                                    onClick={() => setMinParking(minParking + 10)} 
+                                <button
+                                    onClick={() => setMinParking(minParking + 10)}
                                     className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                 >+</button>
                             </div>
                         </div>
 
                         {/* Generator Toggle */}
-                        <div 
+                        <div
                             className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${
-                                reqGenerator 
-                                ? 'bg-primary-container border-primary-container shadow-md' 
+                                reqGenerator
+                                ? 'bg-primary-container border-primary-container shadow-md'
                                 : 'bg-white border-gray-200 hover:bg-gray-50 shadow-sm'
                             }`}
                             onClick={() => setReqGenerator(!reqGenerator)}
@@ -933,14 +904,14 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                 </div>
 
                 <div className="mt-8 flex gap-3 pt-4 border-t border-gray-100">
-                    <button 
-                        onClick={resetFilters} 
+                    <button
+                        onClick={resetFilters}
                         className="flex-1 py-4 text-gray-600 font-bold hover:bg-gray-100 rounded-2xl transition-colors"
                     >
                         Reset
                     </button>
-                    <button 
-                        onClick={() => setIsFilterOpen(false)} 
+                    <button
+                        onClick={() => setIsFilterOpen(false)}
                         className="flex-[2] py-4 bg-primary text-white font-bold rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary/90 active:scale-95 transition-all"
                     >
                         Show {filteredProperties.length} Results
@@ -952,8 +923,8 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
       {/* Compare Modal */}
       {showCompareModal && (
-          <CompareModal 
-              properties={compareList} 
+          <CompareModal
+              properties={compareList}
               onClose={() => setShowCompareModal(false)}
               onRemove={removeFromCompare}
               onChat={onChat}

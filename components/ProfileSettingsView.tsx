@@ -1,14 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
-import { VerificationStatus } from '../types';
 import type { User } from '../types';
-import { 
-  User as UserIcon, Settings, Shield, Lock, Info, LogOut, 
-  ChevronRight, CreditCard, Bell, Globe, Moon, HelpCircle, 
-  FileText, CheckCircle, AlertTriangle, ArrowLeft, Camera, Save, Mail, MessageSquare, CloudCheck, Loader2
+import {
+  User as UserIcon, Settings, Shield, Lock, Info, LogOut,
+  ChevronRight, Bell, Globe, Moon, HelpCircle,
+  FileText, CheckCircle, AlertTriangle, ArrowLeft, Save, Mail, MessageSquare, CloudCheck, Loader2
 } from 'lucide-react';
 import Logo from './Logo';
 import { saveUserProfileToFirestore, getUserProfileFromFirestore } from '../services/firebase';
+import { auth } from '../src/lib/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
 
 interface ProfileSettingsViewProps {
   user: User;
@@ -22,11 +23,11 @@ interface ProfileSettingsViewProps {
 
 type SubView = 'main' | 'personal-info' | 'about' | 'privacy' | 'notifications';
 
-const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({ 
-  user, 
-  onLogout, 
-  onVerifyClick, 
-  onTabChange, 
+const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
+  user,
+  onLogout,
+  onVerifyClick,
+  onTabChange,
   onUserUpdate,
   onOpenLandTitleUpload,
   onOpenAdminPanel
@@ -42,14 +43,6 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
   const [phone, setPhone] = useState(user.phone);
   const [agencyName, setAgencyName] = useState(user.agencyName || '');
 
-  // Notifications preferences state
-  const [notifState, setNotifState] = useState({
-    listingAlerts: true,
-    messages: true,
-    priceDrops: true,
-    marketing: false
-  });
-
   useEffect(() => {
     // Fetch latest profile from Firestore on mount
     getUserProfileFromFirestore(user.id).then(fetched => {
@@ -63,26 +56,17 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
     });
   }, [user.id]);
 
-  // Avatar Upload Handler
-  const handleAvatarFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      if (typeof reader.result === 'string') {
-        const newAvatar = reader.result;
-        const updated: User = { ...currentUserData, avatarUrl: newAvatar };
-        setCurrentUserData(updated);
-        if (onUserUpdate) onUserUpdate(updated);
-        await saveUserProfileToFirestore(updated);
-        setSaveSuccessMsg('Avatar updated and saved to Firestore successfully!');
-        setTimeout(() => setSaveSuccessMsg(''), 4000);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
+  const isVerified = false;
 
-  const isVerified = currentUserData.verification.status === VerificationStatus.VERIFIED;
+  const handlePasswordReset = async () => {
+    try {
+      if (!auth.currentUser?.email) throw new Error('No sign-in email is available for this account.');
+      await sendPasswordResetEmail(auth, auth.currentUser.email);
+      window.alert('Password reset instructions were sent to your sign-in email.');
+    } catch (error: any) {
+      window.alert(error?.message || 'Could not send password reset instructions.');
+    }
+  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,7 +76,6 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
     const updated: User = {
       ...currentUserData,
       name: fullName,
-      email: email,
       phone: phone,
       agencyName: agencyName
     };
@@ -103,8 +86,10 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
     if (ok) {
       setCurrentUserData(updated);
       if (onUserUpdate) onUserUpdate(updated);
-      setSaveSuccessMsg('Profile synced to Firebase Firestore successfully!');
+      setSaveSuccessMsg('Profile saved.');
       setTimeout(() => setSaveSuccessMsg(''), 4000);
+    } else {
+      setSaveSuccessMsg('Could not save to Firestore. Check your connection and try again.');
     }
   };
 
@@ -124,14 +109,12 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
       <Header title="Personal Information" onBack={() => setCurrentView('main')} />
       <div className="p-4 max-w-lg mx-auto">
         <div className="flex flex-col items-center mb-8">
-            <div className="relative">
-                <img src={currentUserData.avatarUrl} alt="Profile" className="w-24 h-24 rounded-full border-4 border-white shadow-sm object-cover" />
-                <label className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full shadow-sm hover:bg-primary/90 cursor-pointer">
-                    <Camera size={16} />
-                    <input type="file" accept="image/*" onChange={handleAvatarFileSelect} className="hidden" />
-                </label>
-            </div>
-            <p className="mt-2 text-sm text-gray-500">Tap camera icon to upload custom avatar photo</p>
+            {currentUserData.avatarUrl ? (
+              <img src={currentUserData.avatarUrl} alt="Profile" className="w-24 h-24 rounded-full border-4 border-white shadow-sm object-cover" />
+            ) : (
+              <div className="w-24 h-24 rounded-full border-4 border-white shadow-sm bg-primary/10 flex items-center justify-center text-2xl font-bold text-primary">{currentUserData.name?.charAt(0)?.toUpperCase() || 'I'}</div>
+            )}
+            <p className="mt-2 text-sm text-gray-500">Profile photo changes are not enabled here.</p>
         </div>
 
         {saveSuccessMsg && (
@@ -145,50 +128,51 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name</label>
-                    <input 
-                      type="text" 
-                      value={fullName} 
+                    <input
+                      type="text"
+                      value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" 
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium"
                     />
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email Address</label>
-                    <input 
-                      type="email" 
-                      value={email} 
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" 
+                    <input
+                      type="email"
+                      value={email}
+                      readOnly
+                      className="w-full p-3 bg-gray-100 border border-gray-200 rounded-xl outline-none font-medium text-gray-600"
                     />
+                    <p className="mt-1 text-xs text-gray-500">Sign-in email changes are managed through your authentication provider.</p>
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone Number</label>
-                    <input 
-                      type="tel" 
-                      value={phone} 
+                    <input
+                      type="tel"
+                      value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" 
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium"
                     />
                 </div>
                  <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Agency Name (Optional)</label>
-                    <input 
-                      type="text" 
-                      value={agencyName} 
+                    <input
+                      type="text"
+                      value={agencyName}
                       onChange={(e) => setAgencyName(e.target.value)}
-                      placeholder="e.g. Lekki Homes" 
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium" 
+                      placeholder="e.g. Lekki Homes"
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-primary outline-none font-medium"
                     />
                 </div>
             </div>
 
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={isSaving}
               className="w-full bg-primary text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
-                {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />} 
-                {isSaving ? 'Syncing to Cloud...' : 'Save & Sync to Firestore'}
+                {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+                {isSaving ? 'Saving...' : 'Save profile'}
             </button>
         </form>
       </div>
@@ -197,51 +181,14 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
 
   const AboutView = () => (
     <div className="min-h-full bg-white pb-8">
-      <Header title="About Gemini" onBack={() => setCurrentView('main')} />
+      <Header title="About Ilé" onBack={() => setCurrentView('main')} />
       <div className="p-6 max-w-lg mx-auto text-center">
-        <div className="w-20 h-20 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <Logo size={40} />
-        </div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">Gemini</h3>
-        <p className="text-gray-500 font-medium mb-8">Version 1.0.2 (Beta)</p>
-        
-        <div className="text-left space-y-4 text-gray-700 leading-relaxed bg-gray-50 p-6 rounded-2xl border border-gray-100">
-            <p>
-                <strong>Gemini</strong> (formerly Ilé) is Nigeria's first AI-powered real estate companion. We are on a mission to bring trust, transparency, and ease to finding property in Nigeria.
-            </p>
-            <p>
-                Whether you are looking for a flat in Yaba, a shop in Alaba, or an event center for your Owambe, Gemini helps you find it without the usual "agent wahala".
-            </p>
-            <p className="pt-4 text-xs text-gray-500 border-t border-gray-200">
-                Designed & Built with ❤️ in Lagos.
-            </p>
-        </div>
-
-        <div className="mt-8 flex justify-center gap-4">
-            <button 
-              type="button"
-              onClick={() => window.open('https://ile.ng', '_blank', 'noopener,noreferrer')} 
-              className="p-3 bg-gray-100 rounded-full text-gray-600 hover:bg-primary/10 hover:text-primary transition-all cursor-pointer shadow-sm hover:scale-110 active:scale-95"
-              title="Visit Website (https://ile.ng)"
-            >
-              <Globe size={20} />
-            </button>
-            <button 
-              type="button"
-              onClick={() => { window.location.href = 'mailto:support@ile.ng'; }} 
-              className="p-3 bg-gray-100 rounded-full text-gray-600 hover:bg-primary/10 hover:text-primary transition-all cursor-pointer shadow-sm hover:scale-110 active:scale-95"
-              title="Email Support (support@ile.ng)"
-            >
-              <Mail size={20} />
-            </button>
-            <button 
-              type="button"
-              onClick={() => setCurrentView('privacy')} 
-              className="p-3 bg-gray-100 rounded-full text-gray-600 hover:bg-primary/10 hover:text-primary transition-all cursor-pointer shadow-sm hover:scale-110 active:scale-95"
-              title="View Privacy Policy"
-            >
-              <Shield size={20} />
-            </button>
+        <div className="w-20 h-20 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6"><Logo size={40} /></div>
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">Ilé</h3>
+        <p className="text-gray-600">A real-estate marketplace for listings, property enquiries and account management.</p>
+        <div className="mt-6 text-left space-y-3 bg-gray-50 p-5 rounded-2xl border border-gray-100 text-sm text-gray-700">
+          <p>Listings, photos and enquiries use Firebase when the project is correctly configured.</p>
+          <p>Ilé does not currently provide online rent or purchase payments, government title searches, identity verification, automated email alerts, or independent safety and valuation data.</p>
         </div>
       </div>
     </div>
@@ -249,55 +196,32 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
 
   const PrivacyView = () => (
     <div className="min-h-full bg-white pb-8">
-      <Header title="Privacy Policy" onBack={() => setCurrentView('main')} />
-      <div className="p-6 max-w-lg mx-auto">
-        <div className="prose prose-sm prose-green">
-            <h3>Data Protection</h3>
-            <p>We take your privacy seriously. All verification data (NIN, Biometrics) is processed securely via our partners (Smile ID / YouVerify) and is never stored in raw form on our servers.</p>
-            
-            <h3>What we collect</h3>
-            <ul>
-                <li>Contact information (Email, Phone)</li>
-                <li>Property preferences and search history</li>
-                <li>Usage data to improve Gemini AI</li>
-            </ul>
-
-            <h3>Your Rights</h3>
-            <p>You have the right to request deletion of your data at any time. Contact support@ile.ng for assistance.</p>
-        </div>
+      <Header title="Privacy information" onBack={() => setCurrentView('main')} />
+      <div className="p-6 max-w-lg mx-auto prose prose-sm">
+        <p><strong>This is a technical summary, not a legally approved privacy policy.</strong> The site owner must publish an appropriate policy and contact details before public launch.</p>
+        <h3>Data used by the app</h3>
+        <p>Depending on enabled features, the app processes account details, listing information and uploaded listing media, saved-item preferences, buyer enquiries, and title documents submitted for private internal review. Saved-item preferences may remain in this browser.</p>
+        <h3>AI tools</h3>
+        <p>When an AI feature is used, the relevant prompt and listing or enquiry context is sent to the AI provider configured by the site operator. Do not submit identity numbers, payment details, or other sensitive personal information.</p>
+        <h3>Before launch</h3>
+        <p>Configure Firebase access rules, retention and deletion processes, provider agreements, a verified privacy contact and a jurisdiction-appropriate notice. Title documents are private to their owner and authorized reviewers when the security rules are deployed.</p>
       </div>
     </div>
   );
 
   const NotificationsView = () => (
-      <div className="min-h-full bg-gray-50 pb-8">
-        <Header title="Notifications" onBack={() => setCurrentView('main')} />
-        <div className="p-4 max-w-lg mx-auto space-y-4">
-            {[
-                { label: 'New Listing Alerts', desc: 'Get notified when new properties match your search.', default: true },
-                { label: 'Message Notifications', desc: 'When an agent or client messages you.', default: true },
-                { label: 'Price Drops', desc: 'Alerts when saved properties reduce price.', default: false },
-                { label: 'Marketing & Tips', desc: 'News from the Gemini team.', default: false }
-            ].map((item, i) => (
-                <div key={i} className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
-                    <div>
-                        <div className="font-bold text-gray-900">{item.label}</div>
-                        <div className="text-xs text-gray-500">{item.desc}</div>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" defaultChecked={item.default} className="sr-only peer" />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                    </label>
-                </div>
-            ))}
-        </div>
+    <div className="min-h-full bg-gray-50 pb-8">
+      <Header title="Notifications" onBack={() => setCurrentView('main')} />
+      <div className="p-6 max-w-lg mx-auto bg-white mt-4 rounded-2xl border border-gray-200 text-sm text-gray-700">
+        Email and push delivery are not connected. The app will not send listing, price-drop, message or marketing notifications.
       </div>
+    </div>
   );
 
   // --- Main View ---
 
   const MenuItem = ({ icon: Icon, label, subLabel, onClick, isDestructive = false }: any) => (
-    <button 
+    <button
       onClick={onClick}
       className={`w-full flex items-center justify-between p-4 bg-white border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors ${isDestructive ? 'text-red-600' : 'text-gray-800'}`}
     >
@@ -324,33 +248,22 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
       {/* Profile Header */}
       <div className="bg-white p-6 mb-6 border-b border-gray-200 shadow-sm md:rounded-b-2xl">
         <div className="flex flex-col items-center text-center">
-          <div className="relative mb-4 group cursor-pointer" onClick={() => setCurrentView('personal-info')}>
-            <img 
-              src={currentUserData.avatarUrl} 
-              alt={currentUserData.name} 
-              className="w-24 h-24 rounded-full border-4 border-white shadow-lg object-cover"
-            />
-            <label className="absolute bottom-0 right-0 p-1.5 rounded-full border-2 border-white shadow-sm bg-primary text-white hover:scale-110 transition-transform cursor-pointer">
-              <Camera size={14} />
-              <input type="file" accept="image/*" onChange={handleAvatarFileSelect} className="hidden" onClick={(e) => e.stopPropagation()} />
-            </label>
-            <div className={`absolute top-0 right-0 p-1 rounded-full border-2 border-white shadow-sm ${isVerified ? 'bg-green-500' : 'bg-gray-400'}`}>
-              {isVerified ? <CheckCircle size={12} className="text-white" /> : <AlertTriangle size={12} className="text-white" />}
-            </div>
+          <div className="relative mb-4">
+            {currentUserData.avatarUrl ? <img src={currentUserData.avatarUrl} alt={currentUserData.name} className="w-24 h-24 rounded-full border-4 border-white shadow-lg object-cover" /> : <div className="w-24 h-24 rounded-full border-4 border-white shadow-lg bg-primary/10 flex items-center justify-center text-2xl font-bold text-primary">{currentUserData.name?.charAt(0)?.toUpperCase() || 'I'}</div>}
           </div>
           <h2 className="text-xl font-bold text-gray-900">{currentUserData.name}</h2>
           <p className="text-gray-500 text-sm mb-2">{currentUserData.email}</p>
           <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${
-            isVerified 
-              ? 'bg-green-50 text-green-700 border-green-200' 
+            isVerified
+              ? 'bg-green-50 text-green-700 border-green-200'
               : 'bg-yellow-50 text-yellow-700 border-yellow-200'
           }`}>
-            {isVerified ? 'Verified Identity' : 'Unverified Account'}
+            Identity verification not connected
           </span>
         </div>
 
         {!isVerified && (
-          <div 
+          <div
             onClick={onVerifyClick}
             className="mt-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center justify-between cursor-pointer hover:bg-red-100 transition-colors"
           >
@@ -359,8 +272,8 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
                 <Shield size={20} />
               </div>
               <div className="text-left">
-                <p className="text-sm font-bold text-red-800">Verify your Identity</p>
-                <p className="text-xs text-red-600">Unlock full access to Gemini</p>
+                <p className="text-sm font-bold text-red-800">Identity verification unavailable</p>
+                <p className="text-xs text-red-600">No identity provider is connected</p>
               </div>
             </div>
             <ChevronRight size={18} className="text-red-400" />
@@ -373,18 +286,13 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
         <div>
           <h3 className="px-2 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Account</h3>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <MenuItem 
-                icon={UserIcon} 
-                label="Personal Information" 
+            <MenuItem
+                icon={UserIcon}
+                label="Personal Information"
                 subLabel="Edit name, phone, agency"
-                onClick={() => setCurrentView('personal-info')} 
+                onClick={() => setCurrentView('personal-info')}
             />
-             <MenuItem 
-                icon={CreditCard} 
-                label="Payment Methods" 
-                subLabel="Manage cards & bank accounts"
-                onClick={() => alert('Wallet coming soon')} 
-            />
+
           </div>
         </div>
 
@@ -392,26 +300,26 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
         <div>
           <h3 className="px-2 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Tools & Verification</h3>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-             <MenuItem 
-                icon={MessageSquare} 
-                label="Gemini AI Assistant" 
+             <MenuItem
+                icon={MessageSquare}
+                label="Ilé AI Assistant"
                 subLabel="Chat with your AI copilot"
-                onClick={() => onTabChange('chat')} 
+                onClick={() => onTabChange('chat')}
             />
             {onOpenLandTitleUpload && (
-              <MenuItem 
-                  icon={FileText} 
-                  label="Upload Land Title Document" 
-                  subLabel="Submit C of O, Gov Consent or Gazette for verification"
-                  onClick={onOpenLandTitleUpload} 
+              <MenuItem
+                  icon={FileText}
+                  label="Submit title document for review"
+                  subLabel="Private file for internal Ilé review only"
+                  onClick={onOpenLandTitleUpload}
               />
             )}
             {onOpenAdminPanel && (
-              <MenuItem 
-                  icon={CheckCircle} 
-                  label="Admin Verification Console" 
-                  subLabel="Review and approve pending land titles"
-                  onClick={onOpenAdminPanel} 
+              <MenuItem
+                  icon={CheckCircle}
+                  label="Ilé Document Review Console"
+                  subLabel="Record an internal document review"
+                  onClick={onOpenAdminPanel}
               />
             )}
           </div>
@@ -421,16 +329,10 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
         <div>
           <h3 className="px-2 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Preferences</h3>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <MenuItem 
-                icon={Bell} 
-                label="Notifications" 
-                onClick={() => setCurrentView('notifications')} 
-            />
-            <MenuItem 
-                icon={Globe} 
-                label="Language" 
-                subLabel="English (Nigeria)"
-                onClick={() => alert('Language selector coming soon')} 
+            <MenuItem
+                icon={Bell}
+                label="Notifications"
+                onClick={() => setCurrentView('notifications')}
             />
           </div>
         </div>
@@ -439,15 +341,15 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
          <div>
           <h3 className="px-2 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Privacy & Security</h3>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <MenuItem 
-                icon={Lock} 
-                label="Change Password" 
-                onClick={() => alert('Password reset')} 
+            <MenuItem
+                icon={Lock}
+                label="Change Password"
+                onClick={handlePasswordReset}
             />
-             <MenuItem 
-                icon={Shield} 
-                label="Privacy Policy" 
-                onClick={() => setCurrentView('privacy')} 
+             <MenuItem
+                icon={Shield}
+                label="Privacy Policy"
+                onClick={() => setCurrentView('privacy')}
             />
           </div>
         </div>
@@ -456,26 +358,16 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
         <div>
           <h3 className="px-2 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Support</h3>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <MenuItem 
-                icon={HelpCircle} 
-                label="Help & Support" 
-                onClick={() => alert('Opening support chat...')} 
-            />
-             <MenuItem 
-                icon={FileText} 
-                label="Terms of Service" 
-                onClick={() => window.open('#', '_blank')} 
-            />
-             <MenuItem 
-                icon={Info} 
-                label="About Gemini" 
-                subLabel="Version 1.0.2 (Beta)"
-                onClick={() => setCurrentView('about')} 
+             <MenuItem
+                icon={Info}
+                label="About Ilé"
+                subLabel="Property marketplace"
+                onClick={() => setCurrentView('about')}
             />
           </div>
         </div>
 
-        <button 
+        <button
             onClick={onLogout}
             className="w-full py-4 rounded-2xl bg-red-50 text-red-600 font-bold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
         >
@@ -483,7 +375,7 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
         </button>
 
         <div className="text-center text-xs text-gray-400 mt-8 pb-8">
-            Gemini Real Estate Platform © 2025
+            Ilé Real Estate
         </div>
       </div>
     </div>

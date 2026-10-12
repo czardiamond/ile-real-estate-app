@@ -14,7 +14,7 @@ import {
   onSnapshot,
   Unsubscribe
 } from 'firebase/firestore';
-import { Property as FullProperty, PropertyType, ListingStatus, FloodRisk } from '../../types';
+import { Property as FullProperty, PropertyType, ListingStatus, FloodRisk, VerificationStatus } from '../../types';
 
 export type Property = FullProperty;
 
@@ -30,26 +30,26 @@ const PROPERTIES_COLLECTION = 'properties';
 export const normalizeProperty = (id: string, data: any): FullProperty => {
   // Handle location object or string
   let locationObj = {
-    address: 'Lagos, Nigeria',
-    area: 'Lekki',
-    city: 'Lagos',
-    state: 'Lagos'
+    address: 'Location not provided',
+    area: 'Unknown area',
+    city: '',
+    state: ''
   };
 
   if (typeof data.location === 'object' && data.location !== null) {
     locationObj = {
-      address: data.location.address || data.location.area || 'Lagos, Nigeria',
-      area: data.location.area || 'Lekki',
-      city: data.location.city || 'Lagos',
-      state: data.location.state || 'Lagos'
+      address: data.location.address || data.location.area || 'Location not provided',
+      area: data.location.area || 'Unknown area',
+      city: data.location.city || '',
+      state: data.location.state || ''
     };
   } else if (typeof data.location === 'string' && data.location.trim().length > 0) {
     const parts = data.location.split(',').map((s: string) => s.trim());
     locationObj = {
       address: data.location,
-      area: parts[0] || 'Lekki',
-      city: parts[1] || 'Lagos',
-      state: parts[2] || 'Lagos'
+      area: parts[0] || 'Unknown area',
+      city: parts[1] || '',
+      state: parts[2] || ''
     };
   }
 
@@ -58,19 +58,19 @@ export const normalizeProperty = (id: string, data: any): FullProperty => {
     ? data.images 
     : Array.isArray(data.imageUrls) && data.imageUrls.length > 0
     ? data.imageUrls
-    : ['https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80'];
+    : ['/property-placeholder.svg'];
 
   // Handle specs
   const specs = {
-    bedrooms: data.specs?.bedrooms ?? data.bedrooms ?? 0,
-    bathrooms: data.specs?.bathrooms ?? data.bathrooms ?? 0,
-    sizeSqM: data.specs?.sizeSqM ?? data.specs?.square_meters ?? data.squareMeters ?? 0,
-    capacity: data.specs?.capacity ?? data.capacity ?? 0,
-    parkingSpaces: data.specs?.parkingSpaces ?? data.parkingSpaces ?? 2
+    bedrooms: data.specs?.bedrooms ?? data.bedrooms,
+    bathrooms: data.specs?.bathrooms ?? data.bathrooms,
+    sizeSqM: data.specs?.sizeSqM ?? data.specs?.square_meters ?? data.squareMeters,
+    capacity: data.specs?.capacity ?? data.capacity,
+    parkingSpaces: data.specs?.parkingSpaces ?? data.parkingSpaces
   };
 
   // Determine property type safely
-  let propType: PropertyType = PropertyType.HOUSE;
+  let propType: PropertyType = PropertyType.OTHER;
   const rawType = (data.type || data.propertyType || data.category || '').toLowerCase();
   if (rawType.includes('land')) propType = PropertyType.LAND;
   else if (rawType.includes('apartment') || rawType.includes('flat')) propType = PropertyType.APARTMENT;
@@ -83,7 +83,11 @@ export const normalizeProperty = (id: string, data: any): FullProperty => {
   else if (rawType.includes('event') || rawType.includes('hall') || rawType.includes('owambe')) propType = PropertyType.EVENT_CENTER;
   else if (rawType.includes('commercial')) propType = PropertyType.OFFICE;
 
-  const isVerified = data.isVerified === true || data.verificationStatus === 'Verified';
+  const isVerified = data.isVerified === true
+    && data.verificationStatus === VerificationStatus.VERIFIED
+    && typeof data.verifiedBy === 'string'
+    && data.verifiedBy.length > 0;
+  const normalizedStatus = Object.values(ListingStatus).find(status => status.toLowerCase() === String(data.status || '').toLowerCase()) || ListingStatus.AVAILABLE;
 
   return {
     id: id,
@@ -91,74 +95,90 @@ export const normalizeProperty = (id: string, data: any): FullProperty => {
     description: data.description || '',
     location: locationObj,
     price: Number(data.price) || 0,
-    period: data.period || 'total',
+    period: data.period || undefined,
     type: propType,
-    status: (data.status as ListingStatus) || ListingStatus.AVAILABLE,
+    status: normalizedStatus,
     specs: specs,
-    features: Array.isArray(data.features) && data.features.length > 0 ? data.features : ['24/7 Power', 'Fitted Kitchen', 'Security'],
+    features: Array.isArray(data.features) ? data.features : [],
     images: images,
     videoUrl: data.videoUrl,
     floorPlanUrl: data.floorPlanUrl,
-    agentId: data.agentId || data.ownerId || 'agent-1',
+    floorPlanImages: Array.isArray(data.floorPlanImages) ? data.floorPlanImages : (data.floorPlanUrl ? [data.floorPlanUrl] : []),
+    agentId: data.agentId || data.ownerId || '',
     isVerified: isVerified,
-    verificationLevel: isVerified ? 'PHYSICALLY_INSPECTED' : (data.verificationLevel || 'NONE'),
-    titleDocument: data.titleDocument,
-    floodRisk: data.floodRisk || FloodRisk.LOW,
-    avgPowerHours: Number(data.avgPowerHours) || 20,
+    verificationLevel: isVerified ? (data.verificationLevel || 'NONE') : 'NONE',
+    titleDocument: undefined,
+    floodRisk: data.floodRisk || FloodRisk.UNASSESSED,
+    avgPowerHours: data.avgPowerHours !== undefined && data.avgPowerHours !== null && data.avgPowerHours !== '' && Number.isFinite(Number(data.avgPowerHours)) ? Number(data.avgPowerHours) : undefined,
     isSolarPowered: Boolean(data.isSolarPowered),
     smartMeterId: data.smartMeterId,
-    waterSource: data.waterSource || 'Borehole',
-    escrowEnabled: data.escrowEnabled !== false,
-    depositEscrowEnabled: data.depositEscrowEnabled !== false,
-    coordinates: data.coordinates || { lat: 6.4541, lng: 3.6128 },
+    waterSource: data.waterSource || 'Not specified',
+    escrowEnabled: false,
+    depositEscrowEnabled: false,
+    coordinates: data.coordinates && Number.isFinite(Number(data.coordinates.lat)) && Number.isFinite(Number(data.coordinates.lng))
+      ? { lat: Number(data.coordinates.lat), lng: Number(data.coordinates.lng) }
+      : undefined,
     virtualTourUrl: data.virtualTourUrl,
-    createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString()),
+    ownerId: typeof data.ownerId === 'string' ? data.ownerId : undefined,
+    createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (typeof data.createdAt === 'string' ? data.createdAt : ''),
     updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : undefined,
   };
+};
+
+const omitUndefined = (value: any): any => {
+  if (Array.isArray(value)) return value.map(omitUndefined).filter(item => item !== undefined);
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined).map(([key, item]) => [key, omitUndefined(item)]));
+  }
+  return value;
 };
 
 export const createProperty = async (
   propertyData: any
 ): Promise<string> => {
   const user = auth.currentUser;
-  const ownerId = propertyData.ownerId || propertyData.agentId || user?.uid;
-  if (!ownerId) {
+  if (!user) {
     throw new Error('User must be authenticated to create a property');
+  }
+  const ownerId = user.uid;
+  if ((propertyData.ownerId && propertyData.ownerId !== ownerId) || (propertyData.agentId && propertyData.agentId !== ownerId)) {
+    throw new Error('You can only publish listings under your own account.');
   }
 
   try {
-    // Check if the seller is verified on their user account
-    let isSellerVerified = false;
-    try {
-      const userDocSnap = await getDoc(doc(db, 'users', ownerId));
-      if (userDocSnap.exists() && userDocSnap.data()?.isVerifiedSeller === true) {
-        isSellerVerified = true;
-      }
-    } catch (checkErr) {
-      console.warn('Could not check seller verification status, defaulting to unverified:', checkErr);
-    }
+    const { titleDocument: _privateTitleDocument, ...publicPropertyData } = propertyData;
 
-    const isVerified = isSellerVerified || propertyData.isVerified === true;
-    const verificationStatus = isVerified 
-      ? 'Verified' 
-      : (propertyData.verificationStatus || 'Pending');
-
-    const docRef = await addDoc(collection(db, PROPERTIES_COLLECTION), {
-      ...propertyData,
+    const propertyDocument = omitUndefined({
+      ...publicPropertyData,
       ownerId: ownerId,
       agentId: ownerId,
-      isVerified: isVerified,
-      verificationStatus: verificationStatus,
+      isVerified: false,
+      verificationStatus: VerificationStatus.PENDING,
+      verificationLevel: 'NONE',
+      verifiedAt: null,
+      verifiedBy: null,
       imageUrls: propertyData.imageUrls || propertyData.images || [],
       images: propertyData.images || propertyData.imageUrls || [],
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    const docRef = await addDoc(collection(db, PROPERTIES_COLLECTION), propertyDocument);
     return docRef.id;
   } catch (error) {
     console.error('Error creating property:', error);
     throw error;
   }
+};
+
+export const updateListingStatus = async (propertyId: string, status: ListingStatus): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Sign in to update a listing.');
+  const propertyRef = doc(db, PROPERTIES_COLLECTION, propertyId);
+  const snapshot = await getDoc(propertyRef);
+  if (!snapshot.exists() || snapshot.data().ownerId !== user.uid) {
+    throw new Error('You do not have permission to update this listing.');
+  }
+  await updateDoc(propertyRef, { status, updatedAt: serverTimestamp() });
 };
 
 export const getProperties = async (filters?: PropertyFilters): Promise<FullProperty[]> => {
@@ -222,7 +242,7 @@ export const verifyProperty = async (
     const updatePayload: Record<string, any> = {
       isVerified,
       verificationStatus: status,
-      verificationLevel: isVerified ? 'PHYSICALLY_INSPECTED' : 'NONE',
+      verificationLevel: isVerified ? 'DOCUMENT_REVIEWED' : 'NONE',
       updatedAt: serverTimestamp(),
     };
 
@@ -292,4 +312,22 @@ export const markUserAsVerifiedSeller = async (
     console.error('Error updating user verified-seller status:', error);
     throw error;
   }
+};
+
+
+export const updatePropertyDescription = async (propertyId: string, description: string): Promise<string> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Sign in before saving a listing description.');
+  const normalizedDescription = description.trim();
+  if (normalizedDescription.length < 10 || normalizedDescription.length > 5000) {
+    throw new Error('The description must be between 10 and 5,000 characters.');
+  }
+
+  const propertyRef = doc(db, PROPERTIES_COLLECTION, propertyId);
+  const snapshot = await getDoc(propertyRef);
+  if (!snapshot.exists()) throw new Error('This listing no longer exists.');
+  if (snapshot.data().ownerId !== user.uid) throw new Error('Only the listing owner can update its description.');
+
+  await updateDoc(propertyRef, { description: normalizedDescription, updatedAt: serverTimestamp() });
+  return normalizedDescription;
 };

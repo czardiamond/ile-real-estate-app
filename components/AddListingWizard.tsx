@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { SmartListingResponse, TitleDocument, VerificationStatus } from '../types';
+import { SmartListingResponse } from '../types';
 import { generateListingFromRawText, processVoiceNoteToListing, transcribeAudioToDescription } from '../services/geminiService';
 import { Sparkles, ArrowRight, Mic, MicOff, CheckCircle, AlertCircle, Loader2, Image as ImageIcon, Trash2, Plus, X, Video, FileText, MapPin, AlertTriangle, Check, LayoutGrid, Coffee, Shield, Radio, Volume2, FileEdit, Building2, DollarSign, Sliders, CheckSquare, LayoutTemplate } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
@@ -16,19 +16,19 @@ L.Icon.Default.mergeOptions({
 
 interface AddListingWizardProps {
   onCancel: () => void;
-  onComplete: (data: SmartListingResponse) => void;
+  onComplete: (data: SmartListingResponse & { mediaFiles: { images: File[]; video?: File; floorPlan?: File } }) => void;
   initialInput?: string;
   initialMode?: 'ai' | 'manual';
 }
 
-const LocationPicker = ({ position, setPosition }: { position: {lat: number, lng: number}, setPosition: (pos: {lat: number, lng: number}) => void }) => {
+const LocationPicker = ({ position, setPosition }: { position?: {lat: number, lng: number} | null, setPosition: (pos: {lat: number, lng: number}) => void }) => {
     const map = useMapEvents({
         click(e) {
             setPosition(e.latlng);
             map.flyTo(e.latlng, map.getZoom());
         }
     });
-    return <Marker position={position} />
+    return position ? <Marker position={position} /> : null
 }
 
 // Amenities List (General)
@@ -45,6 +45,13 @@ const FEATURES_BY_TYPE = {
     LAND: ['Fenced', 'Gated', 'Dry Land', 'Survey Plan', 'Corner Piece', 'Access Road']
 };
 
+const PROPERTY_TYPES_BY_CATEGORY = {
+    RESIDENTIAL: ['Apartment', 'House', 'Duplex', 'Bungalow', 'Short-let', 'Guest House', 'Other'],
+    COMMERCIAL: ['Office Space', 'Shop / Plaza', 'Warehouse', 'Other'],
+    EVENT: ['Event Center', 'Wedding Hall', 'Open Field', 'Party Venue', 'Other'],
+    LAND: ['Land', 'Other'],
+};
+
 const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplete, initialInput = '', initialMode = 'ai' }) => {
   const [step, setStep] = useState<'input' | 'processing' | 'review'>('input');
   const [listingMode, setListingMode] = useState<'ai' | 'manual'>(initialMode);
@@ -52,53 +59,49 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
   const [rawInput, setRawInput] = useState(initialInput);
   const [generatedData, setGeneratedData] = useState<SmartListingResponse | null>(null);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [uploadedImageFiles, setUploadedImageFiles] = useState<File[]>([]);
   const [uploadedVideo, setUploadedVideo] = useState<string | null>(null);
+  const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
   const [uploadedFloorPlan, setUploadedFloorPlan] = useState<string | null>(null);
+  const [uploadedFloorPlanFile, setUploadedFloorPlanFile] = useState<File | null>(null);
+  const previewUrlsRef = useRef<string[]>([]);
 
   const handleFloorPlanUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setUploadedFloorPlan(event.target.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
+    if (!(file.type.startsWith('image/') || file.type === 'image/svg+xml') || file.size > 15 * 1024 * 1024) {
+      alert('Choose an image floor plan under 15MB.');
+      return;
+    }
+    const preview = URL.createObjectURL(file);
+    previewUrlsRef.current.push(preview);
+    setUploadedFloorPlan(preview);
+    setUploadedFloorPlanFile(file);
   };
   
-  // Title Document State
-  const [docType, setDocType] = useState<string>('C_OF_O');
-  const [docNumber, setDocNumber] = useState<string>('');
-  const [registeredOwner, setRegisteredOwner] = useState<string>('');
-  const [docError, setDocError] = useState<string>('');
-
   // Manual Form State
   const [manualTitle, setManualTitle] = useState('');
-  const [manualCategory, setManualCategory] = useState<'RESIDENTIAL' | 'COMMERCIAL' | 'EVENT' | 'LAND'>('RESIDENTIAL');
-  const [manualType, setManualType] = useState('Apartment');
+  const [manualCategory, setManualCategory] = useState<'RESIDENTIAL' | 'COMMERCIAL' | 'EVENT' | 'LAND' | ''>('');
+  const [manualType, setManualType] = useState('');
   const [manualPrice, setManualPrice] = useState('');
-  const [manualPeriod, setManualPeriod] = useState<'per year' | 'per day' | 'per month' | 'total'>('per year');
-  const [manualArea, setManualArea] = useState('Lekki Phase 1');
+  const [manualPeriod, setManualPeriod] = useState<'per year' | 'per day' | 'per month' | 'total' | ''>('');
+  const [manualArea, setManualArea] = useState('');
   const [manualAddress, setManualAddress] = useState('');
-  const [manualState, setManualState] = useState('Lagos State');
-  const [manualBedrooms, setManualBedrooms] = useState('3');
-  const [manualBathrooms, setManualBathrooms] = useState('3');
-  const [manualSqM, setManualSqM] = useState('250');
-  const [manualCapacity, setManualCapacity] = useState('100');
+  const [manualState, setManualState] = useState('');
+  const [manualBedrooms, setManualBedrooms] = useState('');
+  const [manualBathrooms, setManualBathrooms] = useState('');
+  const [manualSqM, setManualSqM] = useState('');
+  const [manualCapacity, setManualCapacity] = useState('');
   const [manualDescription, setManualDescription] = useState('');
-  const [manualDocType, setManualDocType] = useState('C_OF_O');
-  const [manualDocNumber, setManualDocNumber] = useState('');
-  const [manualRegisteredOwner, setManualRegisteredOwner] = useState('');
-  const [manualAvgPowerHours, setManualAvgPowerHours] = useState<number>(20);
+  const [manualAvgPowerHours, setManualAvgPowerHours] = useState<number | ''>('');
   const [manualIsSolar, setManualIsSolar] = useState<boolean>(false);
-  const [manualFloodRisk, setManualFloodRisk] = useState<string>('Dry Land (Low Risk)');
+  const [manualFloodRisk, setManualFloodRisk] = useState<string>('Not assessed');
 
   // Features State
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
 
   // Location State
-  const [coordinates, setCoordinates] = useState<{lat: number, lng: number}>({ lat: 6.5244, lng: 3.3792 }); // Default Lagos
+  const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
 
   // Voice Recording State (Wizard Specs)
   const [isRecording, setIsRecording] = useState(false);
@@ -123,6 +126,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (descriptionTimerRef.current) clearInterval(descriptionTimerRef.current);
+      previewUrlsRef.current.forEach(URL.revokeObjectURL);
     };
   }, []);
 
@@ -166,11 +170,8 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
       }, 1000);
 
     } catch (err) {
-      console.warn("Microphone permission denied or unavailable, using voice audio simulation", err);
-      // Fallback if microphone not accessible
-      const sampleVernacularVoice = "I am standing at a 4-bedroom terrace in Ikate, Lekki. Asking price is 180 million Naira. It has POP ceiling, backup generator, swimming pool, and Governor's Consent title.";
-      setRawInput(sampleVernacularVoice);
-      await processVoiceWithGemini({ type: 'text', data: sampleVernacularVoice });
+      console.warn("Microphone permission denied or unavailable", err);
+      setVoiceStatusNote('Microphone unavailable. Type your property details instead.');
     }
   };
 
@@ -223,9 +224,8 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
       }, 1000);
 
     } catch (err) {
-      console.warn("Microphone permission denied or unavailable, using speech-to-text fallback", err);
-      const sampleSpokenNote = "Brand new luxury 4-bedroom terrace duplex in Ikate Elegushi, Lekki Phase 1. Features fully fitted Italian kitchen with heat extractor, swimming pool, 24-hour backup generator, POP ceilings, smart security, and valid Governor's Consent land title.";
-      await processDescriptionTranscription({ type: 'text', data: sampleSpokenNote }, targetMode);
+      console.warn("Microphone permission denied or unavailable", err);
+      setTranscribeStatusMessage('Microphone unavailable. Type the description instead.');
     }
   };
 
@@ -243,7 +243,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
     targetMode: 'manual' | 'review'
   ) => {
     setIsTranscribingDescription(true);
-    setTranscribeStatusMessage('Auto-transcribing audio note via Gemini Speech-to-Text API...');
+    setTranscribeStatusMessage('Auto-transcribing audio note via Ilé AI speech transcription...');
 
     const transcribedText = await transcribeAudioToDescription(inputPayload);
     setIsTranscribingDescription(false);
@@ -268,7 +268,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
   const processVoiceWithGemini = async (inputPayload: { type: 'audio' | 'text'; data: string; mimeType?: string }) => {
     setIsProcessingVoice(true);
     setStep('processing');
-    setVoiceStatusNote('Gemini Multimodal Audio Engine extracting property specs...');
+    setVoiceStatusNote('Ilé AI is preparing a draft from your note...');
 
     const result = await processVoiceNoteToListing(inputPayload);
     setIsProcessingVoice(false);
@@ -277,9 +277,6 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
       setGeneratedData(result);
       setReviewDescription(result.description || '');
       setSelectedFeatures(result.features || []);
-      if (result.suggestedDocType) {
-        setDocType(result.suggestedDocType);
-      }
       setStep('review');
     } else {
       setStep('input');
@@ -287,42 +284,46 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
     }
   };
 
-  const handlePresetVoiceSample = async (sampleText: string) => {
-    setRawInput(sampleText);
-    await processVoiceWithGemini({ type: 'text', data: sampleText });
-  };
-
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-        const filesArray = Array.from(e.target.files);
-        const newImages = filesArray.map(file => URL.createObjectURL(file as Blob));
-        setUploadedImages(prev => {
-            const combined = [...prev, ...newImages];
-            return combined.slice(0, 5); // Limit to 5
-        });
-    }
+    const filesArray = Array.from(e.target.files || []);
+    if (filesArray.length === 0) return;
+    const remaining = Math.max(0, 5 - uploadedImageFiles.length);
+    const accepted = filesArray.filter(file => file.type.startsWith('image/') && file.size <= 10 * 1024 * 1024).slice(0, remaining);
+    if (accepted.length !== filesArray.length) alert('Select up to 5 image files, each under 10MB.');
+    const previews = accepted.map(file => {
+      const url = URL.createObjectURL(file);
+      previewUrlsRef.current.push(url);
+      return url;
+    });
+    setUploadedImageFiles(prev => [...prev, ...accepted]);
+    setUploadedImages(prev => [...prev, ...previews]);
+    e.target.value = '';
   };
 
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
           // Validate size (e.g., max 50MB)
-          if (file.size > 50 * 1024 * 1024) {
+          if (!file.type.startsWith('video/') || file.size > 50 * 1024 * 1024) {
               alert("Video file too large. Please keep under 50MB.");
               return;
           }
           // Create blob URL
           const videoUrl = URL.createObjectURL(file);
+          previewUrlsRef.current.push(videoUrl);
           setUploadedVideo(videoUrl);
+          setUploadedVideoFile(file);
       }
   };
 
   const removeImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index));
+    setUploadedImageFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const removeVideo = () => {
       setUploadedVideo(null);
+      setUploadedVideoFile(null);
   };
 
   const toggleFeature = (feature: string) => {
@@ -331,18 +332,6 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
         ? prev.filter(f => f !== feature)
         : [...prev, feature]
       );
-  };
-
-  const validateDocNumber = (val: string) => {
-      setDocNumber(val);
-      // Basic validation: ensure it has reasonable length and characters
-      if (val.length < 5) {
-          setDocError("Number too short");
-      } else if (!/^[A-Za-z0-9\/\-\.]+$/.test(val) && val.length > 0) {
-          setDocError("Invalid characters found");
-      } else {
-          setDocError("");
-      }
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {
@@ -359,75 +348,74 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
       alert("Please specify the Area / Neighborhood (e.g. Lekki Phase 1, Ikeja).");
       return;
     }
-
-    const titleDoc: TitleDocument | undefined = manualDocNumber ? {
-      type: manualDocType as any,
-      number: manualDocNumber,
-      registeredOwner: manualRegisteredOwner,
-      status: VerificationStatus.UNVERIFIED
-    } : undefined;
+    if (!manualCategory || !manualType || !manualPeriod || !manualState) {
+      alert("Choose the property category, subtype, price period, and state before publishing.");
+      return;
+    }
 
     const manualListing: SmartListingResponse = {
-      category: manualCategory,
+      category: manualCategory as SmartListingResponse['category'],
+      type: manualType,
+      period: manualPeriod as SmartListingResponse['period'],
       title: manualTitle,
-      description: manualDescription || `${manualTitle} located in ${manualArea}, ${manualState}. Features clean finishings and accessible road network.`,
+      description: manualDescription,
       price: Number(manualPrice) || 0,
       currency: 'NGN',
       location: {
-        address: manualAddress || manualArea,
+        address: manualAddress || undefined,
         area: manualArea,
         state: manualState,
       },
-      features: selectedFeatures.length > 0 ? selectedFeatures : ['24/7 Power', 'Fitted Kitchen', 'Security'],
+      features: selectedFeatures,
       specifications: {
-        bedrooms: Number(manualBedrooms) || 0,
-        bathrooms: Number(manualBathrooms) || 0,
-        square_meters: Number(manualSqM) || 0,
-        capacity: Number(manualCapacity) || 0,
+        bedrooms: manualBedrooms ? Number(manualBedrooms) : undefined,
+        bathrooms: manualBathrooms ? Number(manualBathrooms) : undefined,
+        square_meters: manualSqM ? Number(manualSqM) : undefined,
+        capacity: manualCapacity ? Number(manualCapacity) : undefined,
       },
-      confidence_score: 100,
-      suggestedDocType: manualDocType
+      confidence_score: 0
     };
 
     const finalData = {
       ...manualListing,
-      images: uploadedImages.length > 0 ? uploadedImages : ["https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80"],
-      videoUrl: uploadedVideo || undefined,
-      floorPlanUrl: uploadedFloorPlan || undefined,
-      titleDocument: titleDoc,
-      coordinates: coordinates
+      images: [],
+      videoUrl: undefined,
+      floorPlanUrl: undefined,
+      coordinates: coordinates || undefined,
+      avgPowerHours: manualAvgPowerHours === '' ? undefined : manualAvgPowerHours,
+      isSolarPowered: manualIsSolar,
+      floodRisk: manualFloodRisk,
+      mediaFiles: { images: uploadedImageFiles, video: uploadedVideoFile || undefined, floorPlan: uploadedFloorPlanFile || undefined },
     };
 
     onComplete(finalData);
   };
 
+  const updateGeneratedLocation = (field: 'area' | 'state', value: string) => {
+    setGeneratedData(current => current ? { ...current, location: { ...current.location, [field]: value } } : current);
+  };
+
+  const updateGeneratedSpec = (field: 'bedrooms' | 'bathrooms' | 'capacity' | 'square_meters', value: string) => {
+    setGeneratedData(current => current ? {
+      ...current,
+      specifications: { ...current.specifications, [field]: value === '' ? undefined : Number(value) },
+    } : current);
+  };
+
   const handleFinalSubmit = () => {
+    if (generatedData && (!generatedData.title.trim() || !generatedData.price || generatedData.price <= 0 || !generatedData.type || !PROPERTY_TYPES_BY_CATEGORY[generatedData.category]?.includes(generatedData.type) || !generatedData.period || !generatedData.location.area.trim() || !generatedData.location.state.trim())) {
+      alert('Review and provide the listing title, price, subtype, price period, area, and state before publishing.');
+      return;
+    }
     if (generatedData) {
-        // Validation check for Title Doc
-        if (docNumber && !registeredOwner) {
-            alert("Please enter the Registered Owner for the Title Document.");
-            return;
-        }
-        if (docError) {
-            alert("Please fix the Document Number error.");
-            return;
-        }
-
-        const titleDoc: TitleDocument | undefined = docNumber ? {
-            type: docType as any,
-            number: docNumber,
-            registeredOwner: registeredOwner,
-            status: VerificationStatus.UNVERIFIED
-        } : undefined;
-
         const finalData = {
             ...generatedData,
             features: selectedFeatures, // Use manual selection
-            images: uploadedImages,
-            videoUrl: uploadedVideo || undefined,
-            floorPlanUrl: uploadedFloorPlan || undefined,
-            titleDocument: titleDoc,
-            coordinates: coordinates
+            images: [],
+            videoUrl: undefined,
+            floorPlanUrl: undefined,
+            coordinates: coordinates || undefined,
+            mediaFiles: { images: uploadedImageFiles, video: uploadedVideoFile || undefined, floorPlan: uploadedFloorPlanFile || undefined },
         };
         onComplete(finalData);
     }
@@ -447,7 +435,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                 </h2>
                 <p className="text-gray-600 text-sm mt-1">
                     {listingMode === 'ai' 
-                      ? 'Speak an on-site audio note or type raw property notes. Gemini 3.6 Flash extracts prices, locations, specs, and title documents automatically.'
+                      ? 'Speak an on-site audio note or type raw property notes. Ilé AI suggests fields from your note. Review every suggestion; title documents and property claims are not verified.'
                       : 'Fill in the standard listing form below to publish your property directly.'
                     }
                 </p>
@@ -523,16 +511,19 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                       </label>
                       <select
                           value={manualCategory}
+                          required
                           onChange={(e) => {
-                              const cat = e.target.value as any;
+                              const cat = e.target.value as 'RESIDENTIAL' | 'COMMERCIAL' | 'EVENT' | 'LAND' | '';
                               setManualCategory(cat);
                               if (cat === 'RESIDENTIAL') setManualType('Apartment');
                               else if (cat === 'COMMERCIAL') setManualType('Office Space');
                               else if (cat === 'EVENT') setManualType('Event Center');
                               else if (cat === 'LAND') setManualType('Land');
+                              else setManualType('');
                           }}
                           className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm text-gray-900 font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
                       >
+                          <option value="">Select category</option>
                           <option value="RESIDENTIAL">Residential Property</option>
                           <option value="COMMERCIAL">Commercial / Business</option>
                           <option value="EVENT">Event Venue / Hospitality</option>
@@ -546,9 +537,11 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                       </label>
                       <select
                           value={manualType}
+                          required
                           onChange={(e) => setManualType(e.target.value)}
                           className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm text-gray-900 font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
                       >
+                          {!manualCategory && <option value="">Select category first</option>}
                           {manualCategory === 'RESIDENTIAL' && (
                               <>
                                   <option value="Apartment">Apartment / Flat</option>
@@ -606,10 +599,12 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                           Payment Period / Type
                       </label>
                       <select
+                          required
                           value={manualPeriod}
                           onChange={(e) => setManualPeriod(e.target.value as any)}
                           className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm text-gray-900 font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
                       >
+                          <option value="">Select price period</option>
                           <option value="total">Outright Sale (Total Price)</option>
                           <option value="per year">Rent per Year (₦/yr)</option>
                           <option value="per month">Rent per Month (₦/mo)</option>
@@ -644,10 +639,12 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                               State
                           </label>
                           <select
+                              required
                               value={manualState}
                               onChange={(e) => setManualState(e.target.value)}
                               className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm text-gray-900 font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
                           >
+                              <option value="">Select state</option>
                               <option value="Lagos State">Lagos State</option>
                               <option value="FCT Abuja">FCT Abuja</option>
                               <option value="Rivers State">Rivers State (Port Harcourt)</option>
@@ -732,55 +729,8 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                   </div>
               )}
 
-              {/* Land Title & Documents */}
-              <div className="border-t border-gray-100 pt-5 space-y-4">
-                  <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                      <Shield className="text-emerald-700" size={18} /> Land Title Deed & Legal Records
-                  </h4>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div>
-                          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
-                              Title Document Type
-                          </label>
-                          <select
-                              value={manualDocType}
-                              onChange={(e) => setManualDocType(e.target.value)}
-                              className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm text-gray-900 font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
-                          >
-                              <option value="C_OF_O">Certificate of Occupancy (C of O)</option>
-                              <option value="GOVERNOR_CONSENT">Governor's Consent</option>
-                              <option value="GAZETTE">Gazette / Excision</option>
-                              <option value="DEED_OF_ASSIGNMENT">Deed of Assignment</option>
-                          </select>
-                      </div>
-
-                      <div>
-                          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
-                              Registration / Plot Number
-                          </label>
-                          <input
-                              type="text"
-                              value={manualDocNumber}
-                              onChange={(e) => setManualDocNumber(e.target.value)}
-                              placeholder="e.g. 45/45/2018A"
-                              className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
-                          />
-                      </div>
-
-                      <div>
-                          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
-                              Registered Legal Owner
-                          </label>
-                          <input
-                              type="text"
-                              value={manualRegisteredOwner}
-                              onChange={(e) => setManualRegisteredOwner(e.target.value)}
-                              placeholder="e.g. Chief O. A. Balogun"
-                              className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
-                          />
-                      </div>
-                  </div>
+              <div className="border-t border-gray-100 pt-5 text-sm text-gray-600">
+                Title documents can be submitted separately after the listing is saved. Submissions are private and receive internal Ilé review only; they are not checked against a government registry.
               </div>
 
               {/* Amenities & Features */}
@@ -822,8 +772,9 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                               type="number"
                               min="0"
                               max="24"
+                              placeholder="Not provided"
                               value={manualAvgPowerHours}
-                              onChange={(e) => setManualAvgPowerHours(Number(e.target.value))}
+                              onChange={(e) => setManualAvgPowerHours(e.target.value === '' ? '' : Number(e.target.value))}
                               className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-sm font-bold text-gray-900 outline-none"
                           />
                       </div>
@@ -837,6 +788,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                               onChange={(e) => setManualFloodRisk(e.target.value)}
                               className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-sm font-bold text-gray-900 outline-none"
                           >
+                              <option value="Not assessed">Not assessed</option>
                               <option value="Dry Land (Low Risk)">Dry Land (Low Risk)</option>
                               <option value="Moderate Risk">Moderate Risk</option>
                               <option value="Flood Prone (High Risk)">Flood Prone (High Risk)</option>
@@ -865,7 +817,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                               Property Description & Agent Remarks
                           </label>
                           <p className="text-[11px] text-gray-500 mt-0.5">
-                              Type manually or tap the voice button to auto-transcribe directly into the description using Gemini Speech-to-Text.
+                              Type manually or tap the voice button to auto-transcribe directly into the description using Ilé AI speech transcription.
                           </p>
                       </div>
 
@@ -876,7 +828,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                                   onClick={() => startDescriptionVoiceRecording('manual')}
                                   disabled={isTranscribingDescription}
                                   className="px-3.5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm hover:scale-102 active:scale-98 disabled:opacity-50 cursor-pointer"
-                                  title="Auto-transcribe voice note directly into description using Gemini speech-to-text API"
+                                  title="Auto-transcribe voice note directly into description using Ilé AI speech transcription"
                               >
                                   <Mic size={16} className="text-emerald-300 animate-pulse" />
                                   <span>Auto-Transcribe Voice Note</span>
@@ -897,7 +849,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                   {isTranscribingDescription && (
                       <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 animate-pulse">
                           <Loader2 size={16} className="animate-spin text-emerald-600 shrink-0" />
-                          <span>Gemini Speech-to-Text converting audio note into description...</span>
+                          <span>Ilé AI is transcribing your note...</span>
                       </div>
                   )}
 
@@ -1024,7 +976,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                     </div>
                     <h3 className="text-xl font-bold leading-snug">Recording in traffic or on a construction site?</h3>
                     <p className="text-emerald-100/80 text-xs leading-relaxed">
-                        Tap record and describe the property in English or local vernacular. Gemini extracts bedrooms, pricing, amenities, and title deeds instantly!
+                        AI can suggest listing fields from your note. Review every suggestion before publishing; it does not verify title documents or property claims.
                     </p>
                 </div>
 
@@ -1061,28 +1013,6 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                 </div>
             </div>
 
-            {/* Quick Sample Voice Notes for Instant Testing */}
-            <div className="mt-5 pt-4 border-t border-white/10 text-xs space-y-2">
-                <span className="text-emerald-300 font-bold block text-[11px] uppercase tracking-wider">
-                    Or click a sample field audio note to test Gemini Audio AI:
-                </span>
-                <div className="flex flex-wrap gap-2">
-                    <button
-                        onClick={() => handlePresetVoiceSample("I am standing at a 4-bedroom terrace in Ikate, Lekki. Asking price is 180 million Naira. It has POP ceiling, backup generator, swimming pool, and Governor's Consent title.")}
-                        className="bg-white/10 hover:bg-white/20 text-emerald-100 px-3 py-1.5 rounded-xl border border-white/15 text-[11px] flex items-center gap-1.5 transition-all text-left"
-                    >
-                        <Volume2 size={12} className="text-emerald-400 shrink-0" />
-                        <span>Lekki 4-Bed Terrace (₦180M + Gov Consent)</span>
-                    </button>
-                    <button
-                        onClick={() => handlePresetVoiceSample("Commercial double shop space for rent at Alaba International Market, upstairs plaza, asking 1.5 million yearly with prepaid meter.")}
-                        className="bg-white/10 hover:bg-white/20 text-emerald-100 px-3 py-1.5 rounded-xl border border-white/15 text-[11px] flex items-center gap-1.5 transition-all text-left"
-                    >
-                        <Volume2 size={12} className="text-emerald-400 shrink-0" />
-                        <span>Alaba Int'l Commercial Shop (₦1.5M/yr)</span>
-                    </button>
-                </div>
-            </div>
         </div>
 
         {/* Text Input Option */}
@@ -1103,6 +1033,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                       const result = await generateListingFromRawText(rawInput);
                       if (result) {
                         setGeneratedData(result);
+                        setReviewDescription(result.description || '');
                         setSelectedFeatures(result.features || []);
                         setStep('review');
                       } else {
@@ -1237,35 +1168,52 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
 
                 {/* Basic Info */}
                 <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Core Details</h3>
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Review listing details</h3>
                     <div className="space-y-4">
                         <div>
                             <label className="block text-xs font-semibold text-gray-500 mb-1">Title</label>
-                            <input type="text" defaultValue={generatedData.title} className="w-full p-2 border border-gray-300 rounded-lg font-bold text-gray-900" />
+                            <input type="text" value={generatedData.title || ''} onChange={(e) => setGeneratedData({ ...generatedData, title: e.target.value })} className="w-full p-2 border border-gray-300 rounded-lg font-bold text-gray-900" />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">Price ({generatedData.currency})</label>
-                                <input type="number" defaultValue={generatedData.price} className="w-full p-2 border border-gray-300 rounded-lg font-mono text-gray-900" />
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">Price ({generatedData.currency || 'NGN'})</label>
+                                <input type="number" min="1" value={generatedData.price || ''} onChange={(e) => setGeneratedData({ ...generatedData, price: e.target.value === '' ? 0 : Number(e.target.value) })} className="w-full p-2 border border-gray-300 rounded-lg font-mono text-gray-900" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">Price period</label>
+                                <select value={generatedData.period || ''} onChange={(e) => setGeneratedData({ ...generatedData, period: (e.target.value || undefined) as SmartListingResponse['period'] })} className="w-full p-2 border border-gray-300 rounded-lg">
+                                    <option value="">Choose period</option>
+                                    <option value="total">Outright sale (total)</option>
+                                    <option value="per year">Rent per year</option>
+                                    <option value="per month">Rent per month</option>
+                                    <option value="per day">Short-let per day</option>
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">Category</label>
-                                <select defaultValue={generatedData.category} className="w-full p-2 border border-gray-300 rounded-lg">
+                                <select value={generatedData.category} onChange={(e) => setGeneratedData({ ...generatedData, category: e.target.value as SmartListingResponse['category'], type: '' })} className="w-full p-2 border border-gray-300 rounded-lg">
                                     <option value="RESIDENTIAL">Residential</option>
                                     <option value="COMMERCIAL">Commercial</option>
-                                    <option value="EVENT">Event Center</option>
+                                    <option value="EVENT">Event venue</option>
                                     <option value="LAND">Land</option>
                                 </select>
                             </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">Property subtype</label>
+                                <select required value={generatedData.type || ''} onChange={(e) => setGeneratedData({ ...generatedData, type: e.target.value })} className="w-full p-2 border border-gray-300 rounded-lg">
+                                    <option value="">Choose subtype</option>
+                                    {PROPERTY_TYPES_BY_CATEGORY[generatedData.category]?.map(type => <option key={type} value={type}>{type}</option>)}
+                                </select>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                              <div>
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">Area</label>
-                                <input type="text" defaultValue={generatedData.location.area} className="w-full p-2 border border-gray-300 rounded-lg" />
+                                <input type="text" value={generatedData.location?.area || ''} onChange={(e) => updateGeneratedLocation('area', e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg" />
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">State</label>
-                                <input type="text" defaultValue={generatedData.location.state} className="w-full p-2 border border-gray-300 rounded-lg" />
+                                <input type="text" value={generatedData.location?.state || ''} onChange={(e) => updateGeneratedLocation('state', e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg" />
                             </div>
                         </div>
                     </div>
@@ -1280,15 +1228,15 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                     <div className="grid grid-cols-2 gap-4 mb-6">
                         {isResidential && (
                             <>
-                                <div><label className="text-xs text-gray-500">Bedrooms</label><input type="number" defaultValue={generatedData.specifications.bedrooms || 0} className="w-full p-2 border rounded-lg"/></div>
-                                <div><label className="text-xs text-gray-500">Bathrooms</label><input type="number" defaultValue={generatedData.specifications.bathrooms || 0} className="w-full p-2 border rounded-lg"/></div>
+                                <div><label className="text-xs text-gray-500">Bedrooms</label><input type="number" min="0" value={generatedData.specifications?.bedrooms ?? ''} onChange={(e) => updateGeneratedSpec('bedrooms', e.target.value)} className="w-full p-2 border rounded-lg"/></div>
+                                <div><label className="text-xs text-gray-500">Bathrooms</label><input type="number" min="0" value={generatedData.specifications?.bathrooms ?? ''} onChange={(e) => updateGeneratedSpec('bathrooms', e.target.value)} className="w-full p-2 border rounded-lg"/></div>
                             </>
                         )}
                         {isEvent && (
-                            <div><label className="text-xs text-gray-500">Guest Capacity</label><input type="number" defaultValue={generatedData.specifications.capacity || 0} className="w-full p-2 border rounded-lg"/></div>
+                            <div><label className="text-xs text-gray-500">Guest Capacity</label><input type="number" min="0" value={generatedData.specifications?.capacity ?? ''} onChange={(e) => updateGeneratedSpec('capacity', e.target.value)} className="w-full p-2 border rounded-lg"/></div>
                         )}
                         {(isCommercial || generatedData.category === 'LAND') && (
-                            <div><label className="text-xs text-gray-500">Size (Sqm)</label><input type="number" defaultValue={generatedData.specifications.square_meters || 0} className="w-full p-2 border rounded-lg"/></div>
+                            <div><label className="text-xs text-gray-500">Size (Sqm)</label><input type="number" min="0" value={generatedData.specifications?.square_meters ?? ''} onChange={(e) => updateGeneratedSpec('square_meters', e.target.value)} className="w-full p-2 border rounded-lg"/></div>
                         )}
                     </div>
                     
@@ -1387,7 +1335,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                     {isTranscribingDescription && (
                         <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 animate-pulse">
                             <Loader2 size={14} className="animate-spin text-emerald-600 shrink-0" />
-                            <span>Gemini Speech-to-Text converting audio note into description...</span>
+                            <span>Ilé AI is transcribing your note...</span>
                         </div>
                     )}
 
@@ -1415,67 +1363,19 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                             <MapPin size={16} /> Pinpoint Location
                         </h3>
                         <span className="text-xs text-primary font-bold bg-primary/10 px-2 py-1 rounded">
-                            Tap map to update
+                            Choose a pin to save coordinates
                         </span>
                     </div>
                     <div className="h-64 w-full rounded-xl overflow-hidden border border-gray-200 relative z-0">
-                        <MapContainer center={coordinates} zoom={13} style={{ height: '100%', width: '100%' }}>
+                        <MapContainer center={coordinates || [9.082, 8.675]} zoom={6} style={{ height: '100%', width: '100%' }}>
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                             <LocationPicker position={coordinates} setPosition={setCoordinates} />
                         </MapContainer>
                     </div>
                 </div>
 
-                {/* UPDATED: Title Documents Section */}
-                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm border-l-4 border-l-blue-600">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2">
-                            <FileText size={16} className="text-blue-600" /> Title Documentation
-                        </h3>
-                        <Shield size={16} className="text-gray-300" />
-                    </div>
-                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-xs text-blue-800 mb-4 leading-relaxed">
-                        <p className="font-bold mb-1">Verify Ownership</p>
-                        Providing valid title details increases trust by 300%. We verify this with the State Government Registry.
-                    </div>
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-500 mb-1">Document Type</label>
-                            <select 
-                                className="w-full p-3 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:border-blue-500 transition-colors"
-                                value={docType}
-                                onChange={(e) => setDocType(e.target.value)}
-                            >
-                                <option value="C_OF_O">Certificate of Occupancy (C of O)</option>
-                                <option value="GOVERNOR_CONSENT">Governor's Consent</option>
-                                <option value="GAZETTE">Gazette</option>
-                                <option value="DEED_OF_ASSIGNMENT">Deed of Assignment</option>
-                            </select>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">Document Number</label>
-                                <input 
-                                    type="text" 
-                                    className={`w-full p-3 border rounded-lg text-sm outline-none transition-colors ${docError ? 'border-red-300 bg-red-50 focus:border-red-500' : 'border-gray-300 focus:border-blue-500'}`}
-                                    placeholder="e.g. L/1234/5678"
-                                    value={docNumber}
-                                    onChange={(e) => validateDocNumber(e.target.value)}
-                                />
-                                {docError && <span className="text-[10px] text-red-500 mt-1 flex items-center gap-1"><AlertTriangle size={10}/> {docError}</span>}
-                            </div>
-                             <div>
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">Registered Owner</label>
-                                <input 
-                                    type="text" 
-                                    className="w-full p-3 border border-gray-300 rounded-lg text-sm outline-none focus:border-blue-500 transition-colors"
-                                    placeholder="Full Name on Title"
-                                    value={registeredOwner}
-                                    onChange={(e) => setRegisteredOwner(e.target.value)}
-                                />
-                            </div>
-                        </div>
-                    </div>
+                <div className="bg-white p-6 rounded-xl border border-gray-200 text-sm text-gray-600">
+                    Title documents can be submitted privately after the listing is saved. Ilé does not perform government registry checks.
                 </div>
             </div>
         </div>

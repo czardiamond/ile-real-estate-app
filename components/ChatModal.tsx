@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import type { Property, User } from '../types';
-import { X, Send, User as UserIcon, Building2, CloudCheck } from 'lucide-react';
-import { saveChatMessageToFirestore, getChatHistoryFromFirestore } from '../services/firebase';
+import { AlertCircle, CheckCircle2, LockKeyhole, Send, X } from 'lucide-react';
+import { saveLeadToFirestore } from '../services/firebase';
 
 interface ChatModalProps {
   property: Property;
@@ -10,126 +10,89 @@ interface ChatModalProps {
 }
 
 const ChatModal: React.FC<ChatModalProps> = ({ property, onClose, user }) => {
-  const userId = user?.id || 'guest_user';
-  const [messages, setMessages] = useState<{role: 'user' | 'agent', text: string}[]>([]);
-  const [input, setInput] = useState(`Hi, is this property in ${property.location.area} still available?`);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [message, setMessage] = useState(`Hi, I'm interested in ${property.title}. Please contact me with more information.`);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    // Fetch agent conversation history for this property
-    getChatHistoryFromFirestore(userId, 'property_agent', property.id).then(history => {
-      if (history && history.length > 0) {
-        setMessages(history.map(m => ({ role: m.role as 'user' | 'agent', text: m.text })));
-      } else {
-        const initMsg = { role: 'agent' as const, text: `Hello! Thanks for your interest in "${property.title}". How can I help you today?` };
-        setMessages([initMsg]);
-        saveChatMessageToFirestore({
-          userId,
-          chatType: 'property_agent',
-          propertyId: property.id,
-          role: 'agent',
-          text: initMsg.text
-        });
-      }
-    });
-  }, [userId, property.id, property.title]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const handleSend = () => {
-    if(!input.trim()) return;
-
-    const userText = input;
-    setMessages(prev => [...prev, { role: 'user', text: userText }]);
-    setInput('');
-
-    // Save to Firestore
-    saveChatMessageToFirestore({
-      userId,
-      chatType: 'property_agent',
-      propertyId: property.id,
-      role: 'user',
-      text: userText
-    });
-    
-    // Simulate agent reply
-    setTimeout(() => {
-        const replyText = "Yes, it is! When would you like to come for an inspection?";
-        setMessages(prev => [...prev, { role: 'agent', text: replyText }]);
-        saveChatMessageToFirestore({
-          userId,
-          chatType: 'property_agent',
-          propertyId: property.id,
-          role: 'agent',
-          text: replyText
-        });
-    }, 1500);
+  const handleSend = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user) {
+      setError('Sign in before sending a property enquiry.');
+      return;
+    }
+    if (message.trim().length < 5) {
+      setError('Please enter a little more detail.');
+      return;
+    }
+    setSending(true);
+    setError('');
+    try {
+      const saved = await saveLeadToFirestore({
+        id: `lead_${user.id}_${property.id}_${Date.now()}`,
+        buyerId: user.id,
+        agentId: property.ownerId || property.agentId,
+        propertyId: property.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        budget: 0,
+        value: property.price,
+        notes: message.trim(),
+      });
+      if (!saved) throw new Error('Your enquiry could not be saved. Check your connection and try again.');
+      setSent(true);
+    } catch (sendError: any) {
+      setError(sendError?.message || 'Your enquiry could not be saved. Please try again.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-0 md:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-        <div className="bg-surface w-full h-full md:h-[600px] md:max-w-md md:rounded-[32px] shadow-2xl overflow-hidden flex flex-col relative animate-in slide-in-from-bottom duration-300">
-            {/* Header */}
-            <div className="bg-surface-container-low p-4 flex items-center justify-between border-b border-outline-variant/20">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                        <UserIcon size={20} />
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-on-surface text-sm">Agent for {property.title.substring(0, 15)}...</h3>
-                        <p className="text-xs text-on-surface-variant flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-green-500"></span> Online
-                        </p>
-                    </div>
-                </div>
-                <button onClick={onClose} className="p-2 hover:bg-surface-container rounded-full transition-colors">
-                    <X size={24} className="text-on-surface-variant" />
-                </button>
-            </div>
-            
-            {/* Property Snippet */}
-            <div className="bg-surface-container/50 p-3 flex items-center gap-3 border-b border-outline-variant/10">
-                <img src={property.images[0]} alt="" className="w-12 h-12 rounded-lg object-cover" />
-                <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-on-surface truncate">{property.title}</p>
-                    <p className="text-xs text-primary font-bold">₦{property.price.toLocaleString()}</p>
-                </div>
-            </div>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <section className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden">
+        <header className="p-5 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-gray-900">Contact listing owner</h2>
+            <p className="text-xs text-gray-500 mt-1">Your enquiry goes to the owner's Ilé dashboard.</p>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="p-2 rounded-full hover:bg-gray-100"><X size={20} /></button>
+        </header>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface">
-                {messages.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
-                            msg.role === 'user' 
-                            ? 'bg-primary text-white rounded-tr-none' 
-                            : 'bg-surface-container-high text-on-surface rounded-tl-none'
-                        }`}>
-                            {msg.text}
-                        </div>
-                    </div>
-                ))}
-                <div ref={bottomRef}></div>
-            </div>
-
-            {/* Input */}
-            <div className="p-4 bg-surface-container-low border-t border-outline-variant/20 flex gap-2">
-                <input 
-                    type="text" 
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    className="flex-1 bg-surface border-none rounded-full px-4 py-3 text-sm focus:ring-2 focus:ring-primary outline-none transition-all"
-                    placeholder="Type a message..."
-                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                />
-                <button onClick={handleSend} className="w-12 h-12 bg-primary text-white rounded-full flex items-center justify-center shadow-sm hover:scale-105 transition-transform">
-                    <Send size={20} />
-                </button>
-            </div>
+        <div className="p-5 bg-gray-50 flex gap-3 items-center border-b border-gray-100">
+          <img src={property.images[0]} alt="" className="w-16 h-14 rounded-xl object-cover bg-gray-200" />
+          <div className="min-w-0">
+            <p className="font-semibold text-sm text-gray-900 truncate">{property.title}</p>
+            <p className="text-sm font-bold text-emerald-800">₦{property.price.toLocaleString()}{property.period ? ` / ${property.period}` : ''}</p>
+          </div>
         </div>
+
+        <div className="p-5">
+          {!user ? (
+            <div className="text-sm text-gray-700 flex items-center gap-2"><LockKeyhole size={18} /> Sign in to send an enquiry to this listing's owner.</div>
+          ) : sent ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900">
+              <div className="flex items-center gap-2 font-bold"><CheckCircle2 size={20} /> Enquiry sent</div>
+              <p className="text-sm mt-2">It has been added to the listing owner's lead inbox. Email and WhatsApp notifications are not connected yet.</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSend} className="space-y-4">
+              <label className="block text-xs font-bold uppercase tracking-wide text-gray-600">Message
+                <textarea value={message} onChange={event => setMessage(event.target.value)} rows={4} maxLength={4000} required className="mt-2 w-full rounded-xl border border-gray-300 p-3 text-sm font-normal normal-case tracking-normal focus:outline-none focus:ring-2 focus:ring-emerald-600" />
+              </label>
+              <div className="text-xs text-gray-500">Sending as {user.name}{user.email ? ` · ${user.email}` : ''}</div>
+              {error && <div className="text-sm text-red-700 flex items-start gap-2"><AlertCircle size={17} className="shrink-0" /> {error}</div>}
+              <button type="submit" disabled={sending} className="w-full rounded-xl bg-emerald-800 hover:bg-emerald-900 disabled:opacity-60 text-white font-bold py-3 flex items-center justify-center gap-2">
+                <Send size={16} /> {sending ? 'Sending…' : 'Send enquiry'}
+              </button>
+            </form>
+          )}
+          <p className="mt-4 text-[11px] text-gray-500">Do not send payment details. Verify a property independently before making any payment.</p>
+        </div>
+      </section>
     </div>
   );
 };
+
 export default ChatModal;

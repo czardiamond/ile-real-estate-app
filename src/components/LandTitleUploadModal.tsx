@@ -1,8 +1,8 @@
 // src/components/LandTitleUploadModal.tsx
 import React, { useState, useEffect } from 'react';
-import { auth, db, storage } from '../firebaseConfig';
+import { auth, db, storage } from '../lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getUserProperties, Property } from '../services/propertyService';
 import { useToast } from '../context/ToastContext';
 
@@ -50,6 +50,10 @@ export const LandTitleUploadModal: React.FC<LandTitleUploadModalProps> = ({
       const selectedFile = e.target.files[0];
       if (selectedFile.size > 15 * 1024 * 1024) {
         setErrorMessage('File size exceeds 15MB limit.');
+        return;
+      }
+      if (!(selectedFile.type.startsWith('image/') || selectedFile.type === 'application/pdf')) {
+        setErrorMessage('Choose a PDF or image file.');
         return;
       }
       setErrorMessage('');
@@ -105,7 +109,7 @@ export const LandTitleUploadModal: React.FC<LandTitleUploadModalProps> = ({
         try {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
 
-          const verRef = await addDoc(collection(db, 'verifications'), {
+          await addDoc(collection(db, 'verifications'), {
             userId: currentUser.uid,
             titleNumber: formattedTitle,
             documentUrl: downloadURL,
@@ -114,14 +118,10 @@ export const LandTitleUploadModal: React.FC<LandTitleUploadModalProps> = ({
             createdAt: serverTimestamp(),
           });
 
-          await updateDoc(doc(db, 'users', currentUser.uid), {
-            currentVerificationId: verRef.id,
-          });
-
           setIsUploading(false);
           toast.success(
-            'Title Submitted Successfully',
-            `Document ${formattedTitle} has been uploaded and queued for admin verification.`
+            'Document submitted for review',
+            'The file is stored privately for internal Ilé review. This is not a government registry search or legal opinion.'
           );
           if (onSuccess) onSuccess();
           onClose();
@@ -189,7 +189,7 @@ export const LandTitleUploadModal: React.FC<LandTitleUploadModalProps> = ({
               className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white"
             >
               <option value="">
-                {loadingProperties ? 'Loading your properties...' : 'General account verification (no specific property)'}
+                {loadingProperties ? 'Loading your properties...' : 'No property selected — document review only'}
               </option>
               {userProperties.map((p) => {
                 const locText = typeof p.location === 'object' 

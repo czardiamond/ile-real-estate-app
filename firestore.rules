@@ -1,48 +1,170 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isAuthenticated() {
+    function signedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
     }
 
+    // Admin access must come from a Firebase Auth custom claim set by a trusted server.
     function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.get('admin', false) == true ||
-        request.auth.token.email.matches('.*admin.*') ||
-        request.auth.uid == 'admin'
-      );
+      return signedIn() && request.auth.token.get('admin', false) == true;
+    }
+
+    function allowedSelfRole(role) {
+      return role in ['Public', 'Agent', 'Brokerage'];
     }
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId)
+        && request.resource.data.id == userId
+        && allowedSelfRole(request.resource.data.role)
+        && request.resource.data.verified == false
+        && request.resource.data.verification.status != 'Verified'
+        && request.resource.data.wallet.balance == 0
+        && request.resource.data.wallet.lifetimeEarnings == 0
+        && request.resource.data.wallet.pendingClearance == 0
+        && request.resource.data.keys().hasOnly([
+          'id', 'name', 'email', 'phone', 'role', 'avatarUrl', 'verified', 'verification',
+          'agencyName', 'brokerageRole', 'isActive', 'referralCode', 'referredBy',
+          'networkRank', 'wallet', 'bankDetails', 'downlineCount', 'updatedAt'
+        ]);
+      allow update: if isAdmin() || (isOwner(userId)
+        && request.resource.data.id == userId
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.verified == resource.data.verified
+        && request.resource.data.verification == resource.data.verification
+        && request.resource.data.wallet == resource.data.wallet
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'email', 'phone', 'avatarUrl', 'agencyName', 'updatedAt'
+        ]));
+      allow delete: if isAdmin();
+    }
+
+    // Deliberately limited to non-sensitive directory fields. Never store wallet, KYC, or bank data here.
+    match /public_profiles/{userId} {
+      allow read: if signedIn();
+      allow create: if isOwner(userId)
+        && request.resource.data.id == userId
+        && allowedSelfRole(request.resource.data.role)
+        && request.resource.data.keys().hasOnly(['id', 'name', 'role', 'agencyName', 'avatarUrl', 'updatedAt']);
+      allow update: if isOwner(userId)
+        && request.resource.data.id == userId
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'agencyName', 'avatarUrl', 'updatedAt']);
       allow delete: if isOwner(userId) || isAdmin();
     }
 
     match /properties/{propertyId} {
       allow read: if true;
-      allow create, update, delete: if true;
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.agentId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.price is number
+        && request.resource.data.price > 0
+        && request.resource.data.type is string
+        && request.resource.data.type.size() > 0
+        && request.resource.data.period in ['per year', 'per month', 'per day', 'total']
+        && request.resource.data.location is map
+        && request.resource.data.location.area is string
+        && request.resource.data.location.area.size() > 0
+        && request.resource.data.location.state is string
+        && request.resource.data.location.state.size() > 0
+        && request.resource.data.isVerified == false
+        && request.resource.data.verificationStatus == 'Pending'
+        && request.resource.data.verificationLevel == 'NONE'
+        && request.resource.data.status == 'Available'
+        && !('titleDocument' in request.resource.data);
+      allow update: if isAdmin() || (signedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.agentId == resource.data.agentId
+        && request.resource.data.isVerified == resource.data.isVerified
+        && request.resource.data.verificationStatus == resource.data.verificationStatus
+        && request.resource.data.verificationLevel == resource.data.verificationLevel
+        && (!('status' in request.resource.data)
+          || request.resource.data.status in ['Available', 'Under Offer', 'Taken'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'description', 'price', 'period', 'location', 'type',
+          'features', 'specs', 'images', 'imageUrls', 'videoUrl', 'floorPlanUrl',
+          'coordinates', 'status', 'updatedAt'
+        ]));
+      allow delete: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
     }
 
     match /property_alerts/{alertId} {
-      allow read, write: if true;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && alertId == request.auth.uid + '_' + request.resource.data.propertyId;
     }
 
     match /leads/{leadId} {
-      allow read, write: if true;
+      allow read, delete: if isAdmin() || (signedIn() && resource.data.agentId == request.auth.uid);
+      allow update: if isAdmin() || (signedIn()
+        && resource.data.agentId == request.auth.uid
+        && request.resource.data.agentId == resource.data.agentId
+        && request.resource.data.buyerId == resource.data.buyerId
+        && request.resource.data.propertyId == resource.data.propertyId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes', 'updatedAt']));
+      allow create: if signedIn()
+        && request.resource.data.buyerId == request.auth.uid
+        && request.resource.data.agentId is string
+        && request.resource.data.propertyId is string
+        && request.resource.data.id == leadId
+        && request.resource.data.status == 'New Arrival'
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 320
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 40
+        && request.resource.data.notes is string
+        && request.resource.data.notes.size() >= 5
+        && request.resource.data.notes.size() <= 4000
+        && request.resource.data.budget is number
+        && request.resource.data.value is number
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasOnly(['id', 'buyerId', 'agentId', 'propertyId', 'name', 'email', 'phone', 'budget', 'value', 'notes', 'status', 'createdAt', 'updatedAt'])
+        && exists(/databases/$(database)/documents/properties/$(request.resource.data.propertyId))
+        && get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.ownerId == request.resource.data.agentId;
     }
 
     match /chat_messages/{messageId} {
-      allow read, write: if true;
+      allow read, update, delete: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.role in ['user', 'model', 'agent']
+        && request.resource.data.text is string
+        && request.resource.data.text.size() <= 12000;
     }
 
     match /verifications/{verificationId} {
-      allow read, write: if true;
+      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.titleNumber is string
+        && request.resource.data.titleNumber.size() <= 100
+        && request.resource.data.documentUrl is string
+        && request.resource.data.documentUrl.matches('https://firebasestorage.googleapis.com/.*')
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly(['userId', 'titleNumber', 'documentUrl', 'status', 'propertyId', 'createdAt'])
+        && (!('propertyId' in request.resource.data)
+          || (exists(/databases/$(database)/documents/properties/$(request.resource.data.propertyId))
+            && get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.ownerId == request.auth.uid));
+      allow update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

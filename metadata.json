@@ -1,12 +1,11 @@
 {
   "name": "Ilé",
-  "description": "AI-powered West African real estate platform with Gemini 3.6 Flash multimodal voice listing, land title vision inspector, and WhatsApp Business API hub.",
+  "description": "Real-estate marketplace for account-based listings, buyer enquiries, and AI-assisted listing drafts. Online payments, identity checks, title-registry verification, and notification delivery are not connected.",
   "requestFramePermissions": [
-    "microphone",
-    "camera",
-    "geolocation"
+    "microphone"
   ],
   "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+    "Authenticated Firebase marketplace",
+    "Server-side AI listing assistance"
   ]
 }

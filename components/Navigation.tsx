@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Store, Search, Plus, Armchair, Users, MessageSquare, Menu, Building2, Sun, Moon, Gamepad2, Cloud, CheckCircle2, Video, FileSpreadsheet } from 'lucide-react';
+import { Store, Search, Plus, Armchair, Users, MessageSquare, Menu, Building2, Sun, Moon, Cloud, CheckCircle2, Video, FileSpreadsheet } from 'lucide-react';
 import { UserRole } from '../types';
 import type { User } from '../types';
 import Logo from './Logo';
@@ -21,7 +21,7 @@ interface NavigationProps {
 }
 
 const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabChange, isDarkMode = false, onToggleTheme, user, onOpenWhatsAppHub, onOpenIleWalkthrough, onOpenQASuite, onOpenLandTitleUpload, onOpenAdminPanel }) => {
-  const [isCloudSynced, setIsCloudSynced] = useState<boolean>(true);
+  const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const [showSyncInfo, setShowSyncInfo] = useState<boolean>(false);
 
   useEffect(() => {
@@ -35,13 +35,11 @@ const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabCh
   const getNavItems = () => {
     // Shared Items
     const chatItem = { id: 'chat', label: 'Ilé AI', icon: MessageSquare };
-    const academyItem = { id: 'academy', label: 'Academy', icon: Gamepad2 };
     const menuItem = { id: 'menu', label: 'Menu', icon: Menu };
 
     if (currentRole === UserRole.BROKERAGE) {
         return [
             { id: 'brokerage-dashboard', label: 'Company', icon: Building2 },
-            academyItem,
             menuItem
         ];
     }
@@ -51,7 +49,6 @@ const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabCh
         { id: 'dashboard', label: 'Portfolio', icon: Armchair }, 
         { id: 'leads', label: 'Guests', icon: Users },
         { id: 'add-listing', label: 'Add', icon: Plus },
-        academyItem,
         menuItem
       ];
     }
@@ -60,7 +57,6 @@ const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabCh
     return [
       { id: 'explore', label: 'Discover', icon: Search },
       { id: 'saved', label: 'Saved', icon: Store }, 
-      academyItem,
       chatItem,
       menuItem
     ];
@@ -70,27 +66,23 @@ const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabCh
 
   const CloudStatusBadge = () => (
     <div className="relative">
-      <button 
+      <button
         onClick={() => setShowSyncInfo(!showSyncInfo)}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs font-medium hover:bg-emerald-500/20 transition-all cursor-pointer"
-        title="Firebase Firestore Cloud Synced"
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all cursor-pointer ${isCloudSynced ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-500/20' : 'bg-red-500/10 border-red-500/20 text-red-800 dark:text-red-300 hover:bg-red-500/20'}`}
+        title={isCloudSynced ? 'Firebase account record reachable' : 'Firebase account record unavailable'}
       >
-        <Cloud size={14} className="text-emerald-600 dark:text-emerald-400" />
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-        </span>
-        <span className="hidden sm:inline text-[11px] font-semibold">Synced</span>
+        <Cloud size={14} className={isCloudSynced ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'} />
+        <span className={`inline-flex h-2 w-2 rounded-full ${isCloudSynced ? 'bg-emerald-500' : 'bg-red-500'}`} />
+        <span className="hidden sm:inline text-[11px] font-semibold">{isCloudSynced ? 'Connected' : 'Unavailable'}</span>
       </button>
-
       {showSyncInfo && (
         <div className="absolute right-0 top-10 w-64 bg-surface border border-outline-variant/30 rounded-2xl shadow-xl p-3 z-50 animate-in fade-in zoom-in-95 text-xs text-on-surface">
-          <div className="flex items-center gap-2 font-bold text-emerald-600 dark:text-emerald-400 mb-1">
+          <div className={`flex items-center gap-2 font-bold mb-1 ${isCloudSynced ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
             <CheckCircle2 size={16} />
-            <span>Firebase Cloud Persistence</span>
+            <span>{isCloudSynced ? 'Firebase connected' : 'Firebase unavailable'}</span>
           </div>
           <p className="text-on-surface-variant text-[11px] leading-relaxed">
-            Authenticated and synchronized with Firestore database. Your properties, profile preferences, and conversation logs are secured in the cloud.
+            {isCloudSynced ? 'A read-only check of your account record succeeded. Each save reports its own result.' : 'The app could not read your account record from Firestore. Cloud-backed actions may be unavailable until Firebase is configured.'}
           </p>
         </div>
       )}
@@ -188,7 +180,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabCh
             className="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden cursor-pointer"
             onClick={() => onTabChange('menu')}
           >
-             <img src={user?.avatarUrl || "https://picsum.photos/100/100"} alt="Profile" className="w-full h-full object-cover" />
+             {user?.avatarUrl ? <img src={user.avatarUrl} alt="Profile" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold">{user?.name?.charAt(0)?.toUpperCase() || 'I'}</div>}
           </div>
         </div>
       </nav>
@@ -299,7 +291,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentRole, activeTab, onTabCh
             onClick={() => onTabChange('menu')}
           >
                <div className="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden">
-                  <img src={user?.avatarUrl || "https://picsum.photos/100/100"} alt="Profile" className="w-full h-full object-cover" />
+                  {user?.avatarUrl ? <img src={user.avatarUrl} alt="Profile" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold">{user?.name?.charAt(0)?.toUpperCase() || 'I'}</div>}
                </div>
                <span className={`text-sm font-medium ${activeTab === 'menu' ? 'text-primary font-bold' : 'text-on-surface'}`}>{currentRole}</span>
           </div>
