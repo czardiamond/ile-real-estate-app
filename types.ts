@@ -28,7 +28,8 @@ export enum PropertyType {
   
   // Hospitality
   SHORT_LET = 'Short-let',
-  GUEST_HOUSE = 'Guest House'
+  GUEST_HOUSE = 'Guest House',
+  OTHER = 'Other'
 }
 
 export enum ListingStatus {
@@ -53,6 +54,7 @@ export enum VerificationStatus {
 }
 
 export enum FloodRisk {
+  UNASSESSED = 'Not assessed',
   LOW = 'Dry Land (Low Risk)',
   MEDIUM = 'Moderate Risk',
   HIGH = 'Flood Prone (High Risk)'
@@ -178,15 +180,15 @@ export interface Property {
   
   // Trust Indicators
   isVerified: boolean; // General flag
-  verificationLevel: 'NONE' | 'IDENTITY_VERIFIED' | 'BUSINESS_VERIFIED' | 'PHYSICALLY_INSPECTED';
+  verificationLevel: 'NONE' | 'IDENTITY_VERIFIED' | 'BUSINESS_VERIFIED' | 'DOCUMENT_REVIEWED' | 'PHYSICALLY_INSPECTED';
   titleDocument?: TitleDocument; // Land Registry Data
   
   // Utility & Environment Intelligence
   floodRisk: FloodRisk;
-  avgPowerHours: number; // 0-24
+  avgPowerHours?: number; // 0-24; absent means not supplied
   isSolarPowered: boolean;
   smartMeterId?: string; // IoT Link
-  waterSource: 'Borehole' | 'Water Board' | 'Truck' | 'Treatment Plant';
+  waterSource: 'Borehole' | 'Water Board' | 'Truck' | 'Treatment Plant' | 'Not specified';
   escrowEnabled: boolean;
   depositEscrowEnabled: boolean;
   
@@ -224,9 +226,11 @@ export interface Lead {
 
 export interface SmartListingResponse {
   category: 'RESIDENTIAL' | 'COMMERCIAL' | 'EVENT' | 'LAND';
+  type?: string;
   title: string;
   description: string;
   price: number;
+  period?: 'per year' | 'per day' | 'per month' | 'total';
   currency: string;
   location: {
     address?: string;

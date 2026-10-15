@@ -9,39 +9,28 @@ interface BuyerIntentModalProps {
   onClose: () => void;
 }
 
-const DEFAULT_CHAT_LOGS: Record<string, string> = {
-  default: `Buyer: Hi, I saw your listing for the property in Lekki Phase 1. Is the Governor Consent title fully verified?
-Agent: Hello! Yes, the Governor's Consent is verified with Lagos State Land Registry.
-Buyer: Fantastic. My bank has approved my mortgage financing for up to ₦180M. Can we schedule an inspection this Saturday at 10 AM?
-Agent: Absolutely, Saturday 10 AM works. I will have the key and title copies ready for you.
-Buyer: Perfect. If the structural inspection passes, I am ready to pay the 10% escrow deposit immediately.`
-};
-
 export const BuyerIntentModal: React.FC<BuyerIntentModalProps> = ({ lead, property, onClose }) => {
-  const [chatLogInput, setChatLogInput] = useState<string>(
-    DEFAULT_CHAT_LOGS[lead.id] || `Buyer: Hello! I am interested in ${property?.title || 'this property'}. What is the last price?
-Agent: Hi ${lead.name}, thank you for reaching out! The price is ₦${lead.budget.toLocaleString()}. We offer flexible payment plans.
-Buyer: Okay, I have cash available and would like to inspect the property this weekend if possible. Does it have 24/7 power and borehole water treatment?
-Agent: Yes, it features backup solar power, central generator, and treated borehole water.
-Buyer: Excellent. Send me the location pin and title document summary so my lawyer can review before our inspection.`
-  );
+  const [chatLogInput, setChatLogInput] = useState<string>('');
 
   const [loading, setLoading] = useState<boolean>(false);
   const [analysis, setAnalysis] = useState<BuyerIntentAnalysis | null>(null);
   const [copiedScript, setCopiedScript] = useState<boolean>(false);
+  const [analysisError, setAnalysisError] = useState<string>('');
 
   const handleRunAnalysis = async () => {
     setLoading(true);
+    setAnalysisError('');
     try {
       const res = await analyzeBuyerIntentFromChatLogs(
         lead.name,
         property?.title || 'Property Listing',
-        lead.budget || property?.price || 150000000,
+        lead.budget > 0 ? lead.budget : (property?.price ?? 0),
         chatLogInput
       );
       setAnalysis(res);
     } catch (err) {
       console.error(err);
+      setAnalysisError('Analysis is unavailable right now. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -70,7 +59,7 @@ Buyer: Excellent. Send me the location pin and title document summary so my lawy
                 </span>
               </div>
               <p className="text-xs text-on-surface-variant">
-                Analyzing buyer chat logs for <strong className="text-on-surface">{lead.name}</strong> • Budget: ₦{lead.budget.toLocaleString()}
+                Analyzing buyer chat logs for <strong className="text-on-surface">{lead.name}</strong> • Budget: {lead.budget > 0 ? `₦${lead.budget.toLocaleString()}` : 'Not provided'}
               </p>
             </div>
           </div>
@@ -98,9 +87,12 @@ Buyer: Excellent. Send me the location pin and title document summary so my lawy
               value={chatLogInput}
               onChange={(e) => setChatLogInput(e.target.value)}
               rows={5}
-              placeholder="Paste conversation transcript between buyer and agent..."
+              placeholder="Paste the actual conversation transcript between buyer and agent..."
               className="w-full p-3.5 bg-surface-container-low border border-outline-variant/30 rounded-2xl text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono leading-relaxed"
             />
+            <p className="text-[11px] text-on-surface-variant">
+              AI assessment only, based on the transcript you provide. Statements in a chat are not independently verified.
+            </p>
 
             <button
               onClick={handleRunAnalysis}
@@ -119,6 +111,7 @@ Buyer: Excellent. Send me the location pin and title document summary so my lawy
                 </>
               )}
             </button>
+            {analysisError && <p role="alert" className="text-xs text-red-600">{analysisError}</p>}
           </div>
 
           {/* Analysis Results */}

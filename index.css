@@ -1,6 +1,48 @@
-/* Global styles for Ilé Real Estate */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 @layer base {
-  * {
+  *,
+  *::before,
+  *::after {
     box-sizing: border-box;
+  }
+
+  html {
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  body {
+    min-width: 320px;
+    margin: 0;
+    color: var(--color-on-surface);
+    background: var(--color-surface);
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  :focus-visible {
+    outline: 2px solid #956D37;
+    outline-offset: 3px;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: 'Cormorant Garamond', Georgia, serif;
   }
 }

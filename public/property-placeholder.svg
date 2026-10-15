@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" role="img" aria-label="Property photo not supplied">
+  <rect width="1200" height="800" fill="#eef2ef"/>
+  <path d="M390 515V354l210-158 210 158v161h-132V405H522v110z" fill="#c8d5ce"/>
+  <path d="M330 365 600 160l270 205-35 45-235-179-235 179z" fill="#7c9689"/>
+  <text x="600" y="625" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" fill="#64766d">Photo not provided</text>
+</svg>
