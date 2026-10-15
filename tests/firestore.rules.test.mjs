@@ -70,6 +70,7 @@ function publicProperty(ownerId = 'owner-1', overrides = {}) {
 
 function publicProjection(source, overrides = {}) {
   return {
+    publicProjectionVersion: 1,
     agentId: source.agentId,
     title: source.title,
     description: source.description,
@@ -133,6 +134,7 @@ describe('public and private property records', () => {
     assert.equal(publicSnap.data().smartMeterId, undefined);
     await assertSucceeds(getDocs(query(
       collection(anonymous, 'public_listings'),
+      where('publicProjectionVersion', '==', 1),
       where('status', 'in', ['Available', 'Under Offer', 'Taken']),
       orderBy('createdAt', 'desc'),
     )));
@@ -160,6 +162,43 @@ describe('public and private property records', () => {
     const anonymous = testEnv.unauthenticatedContext().firestore();
     await assertFails(getDoc(doc(anonymous, 'public_listings', 'legacy-extra')));
     await assertFails(getDoc(doc(anonymous, 'public_listings', 'legacy-nested')));
+  });
+
+  it('allows anonymous queries only for versioned safe projections and excludes legacy private fields', async () => {
+    await seedListing('safe-listing');
+    const legacySource = publicProperty('legacy-owner');
+    await testEnv.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'public_listings', 'legacy-private-field'), publicProjection(legacySource, {
+        publicProjectionVersion: 0,
+        ownerEmail: 'private@example.com',
+      }));
+      await setDoc(doc(db, 'public_listings', 'legacy-unknown-field'), publicProjection(legacySource, {
+        publicProjectionVersion: 0,
+        legacySecret: 'must-not-be-public',
+      }));
+    });
+
+    const anonymous = testEnv.unauthenticatedContext().firestore();
+    const safeQuery = query(
+      collection(anonymous, 'public_listings'),
+      where('publicProjectionVersion', '==', 1),
+      where('status', 'in', ['Available', 'Under Offer', 'Taken']),
+      orderBy('createdAt', 'desc'),
+    );
+    const safeResults = await assertSucceeds(getDocs(safeQuery));
+    assert.deepEqual(safeResults.docs.map(document => document.id), ['safe-listing']);
+    assert.equal(safeResults.docs[0].data().ownerEmail, undefined);
+    assert.equal(safeResults.docs[0].data().legacySecret, undefined);
+
+    const unversionedQuery = query(
+      collection(anonymous, 'public_listings'),
+      where('status', 'in', ['Available', 'Under Offer', 'Taken']),
+      orderBy('createdAt', 'desc'),
+    );
+    await assertFails(getDocs(unversionedQuery));
+    await assertFails(getDoc(doc(anonymous, 'public_listings', 'legacy-private-field')));
+    await assertFails(getDoc(doc(anonymous, 'public_listings', 'legacy-unknown-field')));
   });
 
   it('requires an atomic private record + sanitized public projection to publish', async () => {

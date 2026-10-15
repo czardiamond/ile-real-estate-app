@@ -133,12 +133,13 @@ service cloud.firestore {
 
     function validPublicListing(data, listingId) {
       return data.keys().hasOnly([
-          'agentId', 'title', 'description', 'price', 'period', 'location', 'type', 'status',
+          'publicProjectionVersion', 'agentId', 'title', 'description', 'price', 'period', 'location', 'type', 'status',
           'specs', 'features', 'images', 'videoUrl', 'floorPlanUrl', 'floorPlanImages',
           'floodRisk', 'avgPowerHours', 'isSolarPowered', 'waterSource', 'virtualTourUrl',
           'isVerified', 'verificationStatus', 'verificationLevel', 'createdAt', 'updatedAt'
         ])
-        && data.keys().hasAll(['agentId', 'title', 'description', 'price', 'period', 'location', 'type', 'status', 'specs', 'features', 'images', 'isVerified', 'verificationStatus', 'verificationLevel', 'createdAt', 'updatedAt'])
+        && data.keys().hasAll(['publicProjectionVersion', 'agentId', 'title', 'description', 'price', 'period', 'location', 'type', 'status', 'specs', 'features', 'images', 'isVerified', 'verificationStatus', 'verificationLevel', 'createdAt', 'updatedAt'])
+        && data.publicProjectionVersion == 1
         && data.agentId is string && data.agentId.size() > 0 && data.agentId.size() <= 128
         && data.title is string && data.title.size() > 0 && data.title.size() <= 200
         && data.description is string && data.description.size() <= 5000
@@ -349,7 +350,9 @@ service cloud.firestore {
     match /public_listings/{listingId} {
       allow get: if validPublicListing(resource.data, listingId)
         && resource.data.status in ['Available', 'Under Offer', 'Taken'];
-      allow list: if resource.data.status in ['Available', 'Under Offer', 'Taken'];
+      // Query rules cannot redact fields; only versioned projections from validated writes or migration are listable.
+      allow list: if resource.data.publicProjectionVersion == 1
+        && resource.data.status in ['Available', 'Under Offer', 'Taken'];
       allow create: if signedIn()
         && validPublicListing(request.resource.data, listingId)
         && request.resource.data.status == 'Available'
@@ -359,6 +362,7 @@ service cloud.firestore {
         && publicListingMatchesProperty(listingId, request.resource.data);
       allow update: if (signedIn()
           && get(/databases/$(database)/documents/properties/$(listingId)).data.ownerId == request.auth.uid
+          && request.resource.data.publicProjectionVersion == 1
           && validPublicListingOwnerUpdate(request.resource.data, resource.data)
           && request.resource.data.agentId == resource.data.agentId
           && request.resource.data.isVerified == resource.data.isVerified
@@ -373,6 +377,7 @@ service cloud.firestore {
           ])
           && publicListingMatchesProperty(listingId, request.resource.data))
         || (validAdminPublicListingReview()
+          && request.resource.data.publicProjectionVersion == 1
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'isVerified', 'verificationStatus', 'verificationLevel', 'updatedAt'

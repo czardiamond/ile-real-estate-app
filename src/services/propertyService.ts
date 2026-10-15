@@ -29,6 +29,7 @@ export interface PropertyFilters {
 const PROPERTIES_COLLECTION = 'properties';
 const PUBLIC_LISTINGS_COLLECTION = 'public_listings';
 const PUBLIC_LISTING_STATUSES = Object.values(ListingStatus);
+const PUBLIC_PROJECTION_VERSION = 1;
 const MAX_PRICE = 1_000_000_000_000_000;
 const ALLOWED_PERIODS = new Set(['per year', 'per month', 'per day', 'total']);
 const ALLOWED_WATER_SOURCES = new Set(['Borehole', 'Water Board', 'Truck', 'Treatment Plant', 'Not specified']);
@@ -213,6 +214,7 @@ const buildPrivateProperty = (propertyData: Record<string, unknown>, ownerId: st
 const toPublicListing = (privateData: Record<string, any>) => {
   const location = privateData.location || {};
   const publicData: Record<string, any> = {
+    publicProjectionVersion: PUBLIC_PROJECTION_VERSION,
     agentId: privateData.agentId,
     title: privateData.title,
     description: privateData.description,
@@ -304,6 +306,7 @@ export const normalizeProperty = (id: string, data: any): FullProperty => {
 
 const publicPropertiesQuery = () => query(
   collection(db, PUBLIC_LISTINGS_COLLECTION),
+  where('publicProjectionVersion', '==', PUBLIC_PROJECTION_VERSION),
   where('status', 'in', PUBLIC_LISTING_STATUSES),
   orderBy('createdAt', 'desc'),
 );

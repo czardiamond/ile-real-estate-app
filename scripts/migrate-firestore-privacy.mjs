@@ -8,6 +8,7 @@ const projectIndex = args.indexOf('--project');
 const projectId = projectIndex >= 0 ? args[projectIndex + 1] : (process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT);
 const PRIVATE_COLLECTION = 'properties';
 const PUBLIC_COLLECTION = 'public_listings';
+const PUBLIC_PROJECTION_VERSION = 1;
 const ALLOWED_STATUSES = new Map([
   ['available', 'Available'],
   ['under offer', 'Under Offer'],
@@ -155,6 +156,7 @@ function publicProjection(id, source) {
     : 'Pending';
   const isVerified = source.isVerified === true && verificationStatus === 'Verified';
   const projection = {
+    publicProjectionVersion: PUBLIC_PROJECTION_VERSION,
     agentId: ownerId,
     title,
     description: text(source.description, 5000),

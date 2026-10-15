@@ -4,6 +4,7 @@
       "collectionGroup": "public_listings",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "publicProjectionVersion", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
