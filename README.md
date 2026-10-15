@@ -6,10 +6,14 @@ Ilé is a real-estate marketplace for account-based listing management, public l
 
 - Firebase Authentication and user profiles
 - Anonymous listing browse through an allowlisted `public_listings` projection; exact addresses and owner-only fields remain in `properties`
+- Marketplace search and filters, list/map browsing, browser-local saved listings, and side-by-side comparison for up to three properties
 - Firebase Storage uploads for up to five listing photos, one floor plan and private title-review documents; listings support up to five approved feature labels
 - Buyer enquiries routed to the listing owner’s Firestore inbox
 - AI-assisted listing drafts through the authenticated server endpoint
 - Internal Ilé document review, which is **not** a government registry search or legal opinion
+- An in-product Field Guide and About page, linked from the site footer and account area, that explain current workflows and service limits
+
+The About page states that no standalone open-source application license is published in this repository; third-party libraries and assets retain their own license terms. No legal notice here grants rights to reuse the product’s original branding or content.
 
 ## Not connected
 

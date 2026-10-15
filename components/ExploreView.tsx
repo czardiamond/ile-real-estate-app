@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import PropertyCard from './PropertyCard';
 import CompareModal from './CompareModal';
 import { Property, PropertyType, FloodRisk } from '../types';
-import { Search, Filter, Home, GlassWater, PartyPopper, Briefcase, Map as MapIcon, X, Car, Zap, Check, ChevronDown, Waves, List, Bed, Bath, Armchair, Sparkles, Scale, Locate, ArrowUpDown, Calendar, DollarSign, Calculator, Flame } from 'lucide-react';
+import { Search, Filter, Home, GlassWater, PartyPopper, Briefcase, Map as MapIcon, X, Car, Zap, Check, ChevronDown, Waves, List, Bed, Bath, Armchair, Sparkles, Scale, Locate, ArrowUpDown, Calendar, DollarSign, Flame } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -30,7 +30,6 @@ interface ExploreViewProps {
   onViewFloorPlan: (property: Property) => void;
   savedPropertyIds?: Set<string>;
   onToggleSave?: (id: string) => void;
-  onOpenMortgageCalculator: () => void;
 }
 
 // Component to handle map bounds updates
@@ -90,8 +89,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
     onView3D,
     onViewFloorPlan,
     savedPropertyIds,
-    onToggleSave,
-    onOpenMortgageCalculator
+    onToggleSave
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('All');
@@ -337,42 +335,47 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       `}</style>
 
       {/* Search & Categories Header */}
-      <div className="px-4 md:px-8 mb-6 bg-surface py-3 transition-all border-b border-outline-variant/30">
-        <div className="max-w-6xl mx-auto space-y-4">
+      <div className="px-4 py-5 md:px-8 md:py-6">
+        <div className="mx-auto max-w-7xl space-y-4">
           {/* Main Search Bar Row */}
           <div className="flex flex-col sm:flex-row items-center gap-3">
             {/* Search Input Box with Sparkles & Filter */}
-            <div className="relative flex-1 w-full bg-surface-container-low dark:bg-slate-900 rounded-full border border-outline-variant/60 shadow-sm hover:shadow-md focus-within:shadow-md focus-within:border-primary transition-all flex items-center px-4 py-1.5">
-              <Search className="text-on-surface-variant/60 shrink-0 mr-2" size={20} />
+            <div className="relative flex w-full flex-1 items-center rounded-xl border border-outline bg-surface-container-low px-4 py-1.5 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+              <Search className="mr-2 shrink-0 text-on-surface-variant" size={19} aria-hidden="true" />
               <input
-                type="text"
-                placeholder="Search Lekki, Wuse, Duplex, Short-let..."
+                type="search"
+                aria-label="Search by property name, neighbourhood or city"
+                placeholder="Search area, city or type"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-transparent border-none outline-none text-on-surface placeholder:text-on-surface-variant/50 text-sm font-medium py-2"
+                className="w-full border-0 bg-transparent py-2.5 text-sm font-medium text-on-surface outline-none placeholder:text-on-surface-variant focus:ring-0"
               />
-              <div className="flex items-center gap-1 shrink-0 ml-2 pl-2 border-l border-outline-variant/40">
+              <div className="ml-2 flex shrink-0 items-center gap-1 border-l border-outline-variant pl-2">
                 <button
+                  type="button"
                   onClick={() => setIsFilterOpen(true)}
-                  className={`p-2 rounded-full transition-colors flex items-center gap-1.5 ${
+                  aria-label={isFilterActive ? 'Open filters; filters are active' : 'Open filters'}
+                  className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     isFilterActive
-                    ? 'bg-primary/10 text-primary font-semibold'
+                    ? 'bg-primary/10 text-primary'
                     : 'text-on-surface-variant hover:bg-surface-container'
                   }`}
-                  title="Filter Properties"
                 >
-                  <Filter size={18} />
-                  {isFilterActive && <span className="w-2 h-2 rounded-full bg-primary" />}
+                  <Filter size={17} aria-hidden="true" />
+                  <span>Filters</span>
+                  {isFilterActive && <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />}
                 </button>
               </div>
             </div>
 
             {/* View Mode & Tools Toolbar Row */}
-            <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar py-1">
+            <div className="flex w-full items-center justify-between gap-2 overflow-x-auto py-1 sm:w-auto sm:justify-end">
               {/* View Switchers */}
               <div className="flex items-center gap-1 bg-surface-container p-1 rounded-full border border-outline-variant/40 shadow-inner shrink-0">
                 <button
+                  type="button"
                   onClick={() => setViewMode('list')}
+                  aria-pressed={viewMode === 'list'}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
                     viewMode === 'list'
                     ? 'bg-primary text-white shadow-sm'
@@ -384,7 +387,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setViewMode('map')}
+                  aria-pressed={viewMode === 'map'}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
                     viewMode === 'map'
                     ? 'bg-primary text-white shadow-sm'
@@ -399,7 +404,10 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
               {/* Compare Mode Toggle */}
               <button
+                type="button"
                 onClick={() => setIsCompareMode(!isCompareMode)}
+                aria-pressed={isCompareMode}
+                aria-label={isCompareMode ? 'Turn off compare mode' : 'Compare properties'}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 shrink-0 ${
                   isCompareMode
                   ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
@@ -415,14 +423,6 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                 )}
               </button>
 
-              {/* Mortgage Calculator Button */}
-              <button
-                onClick={onOpenMortgageCalculator}
-                className="p-2 rounded-full bg-surface-container-low text-primary border border-outline-variant/60 shadow-sm hover:bg-primary/10 transition-all shrink-0"
-                title="Mortgage Calculator"
-              >
-                <Calculator size={18} />
-              </button>
             </div>
           </div>
 
@@ -433,7 +433,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
               return (
                 <button
                   key={cat.id}
+                  type="button"
                   onClick={() => { setActiveCategory(cat.id); setFilterPropertyTypes([]); }}
+                  aria-pressed={isActive}
                   className={`flex items-center gap-2 text-sm font-semibold whitespace-nowrap transition-all relative py-1 px-3 rounded-full ${
                     isActive
                     ? 'bg-primary text-white shadow-xs'
@@ -451,7 +453,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       {/* COMPARISON DOCK */}
       {compareList.length > 0 && (
           <div className="fixed bottom-20 md:bottom-8 left-0 right-0 z-40 flex justify-center pointer-events-none px-4">
-              <div className="bg-gray-900 text-white p-2 pr-4 rounded-full shadow-2xl flex items-center gap-3 pointer-events-auto animate-in slide-in-from-bottom-10 fade-in duration-300 border border-gray-800">
+              <div className="flex items-center gap-3 rounded-2xl border border-gray-700 bg-gray-900 p-2 pr-4 text-white shadow-xl pointer-events-auto animate-in slide-in-from-bottom-10 fade-in duration-300">
 
                 {/* Thumbnails */}
                 <div className="flex -space-x-3 pl-1">
@@ -475,6 +477,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                 </div>
 
                 <button
+                    type="button"
                     onClick={() => setShowCompareModal(true)}
                     disabled={compareList.length < 2}
                     className={`ml-2 px-5 py-2 rounded-full font-bold text-sm transition-all ${
@@ -487,7 +490,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                 </button>
 
                 <button
+                    type="button"
                     onClick={() => setCompareList([])}
+                    aria-label="Clear comparison"
                     className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 text-gray-400 transition-colors"
                 >
                     <X size={16} />
@@ -497,19 +502,21 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       )}
 
       {/* View Content */}
-      <div className="px-4 md:px-8 h-full max-w-[1600px] mx-auto">
+      <div className="mx-auto h-full max-w-[1600px] px-4 md:px-8">
+        {viewMode === 'list' && <p className="mb-4 text-sm font-medium text-on-surface-variant" aria-live="polite">{filteredProperties.length} {filteredProperties.length === 1 ? 'property' : 'properties'} found</p>}
         {viewMode === 'list' ? (
              /* LIST VIEW */
             filteredProperties.length === 0 ? (
-                <div className="text-center py-20 flex flex-col items-center">
-                    <div className="w-32 h-32 bg-gray-100 rounded-[2rem] flex items-center justify-center mb-6">
-                        <MapIcon className="text-gray-400" size={48} />
+                <div className="flex flex-col items-center py-20 text-center">
+                    <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-3xl bg-surface-container">
+                        <MapIcon className="text-on-surface-variant" size={38} />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900">No spaces found here</h3>
-                    <p className="text-gray-500 max-w-xs mx-auto mt-2">Try adjusting your search area or filters to find what you're looking for.</p>
+                    <h3 className="text-xl font-semibold text-on-surface">No properties match this search</h3>
+                    <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-on-surface-variant">Try a nearby area or remove a filter. You can also clear everything and start again.</p>
                     <button
+                    type="button"
                     onClick={resetFilters}
-                    className="mt-6 px-6 py-3 bg-primary text-white rounded-full font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                    className="mt-6 min-h-11 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                     >
                     Clear all filters
                     </button>
@@ -554,7 +561,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
                     {/* Map attribution and listing-only context */}
                     <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[400] w-full max-w-2xl px-4">
-                        <div className="bg-white/90 backdrop-blur-xl px-4 py-3 rounded-2xl shadow-lg border border-white/20 text-xs text-gray-700 text-center">
+                        <div className="rounded-xl border border-outline bg-white px-4 py-3 text-center text-xs leading-5 text-on-surface shadow-md">
                           Exact seller-pinned coordinates are not included in public listings. Privacy-safe approximate map locations are not connected yet; switch to list view to browse available properties.
                         </div>
                     </div>
@@ -626,12 +633,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
       {/* FILTER MODAL */}
       {isFilterOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center p-0 md:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-surface-container-low w-full md:max-w-md rounded-t-[32px] md:rounded-[32px] p-6 shadow-2xl max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-0 md:items-center md:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setIsFilterOpen(false); }}>
+            <section role="dialog" aria-modal="true" aria-labelledby="property-filter-heading" className="max-h-[90dvh] w-full overflow-y-auto rounded-t-2xl border border-outline-variant bg-surface-container-low p-5 shadow-2xl md:max-w-md md:rounded-2xl md:p-6">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-2xl font-bold text-gray-900">Filters</h3>
-                    <button onClick={() => setIsFilterOpen(false)} className="p-2 bg-white hover:bg-gray-100 rounded-full transition-colors">
-                        <X size={24} className="text-gray-900" />
+                    <h3 id="property-filter-heading" className="font-display text-2xl font-semibold text-on-surface">Filters</h3>
+                    <button type="button" onClick={() => setIsFilterOpen(false)} aria-label="Close filters" className="flex h-11 w-11 items-center justify-center rounded-lg border border-outline bg-white text-on-surface transition-colors hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                        <X size={20} aria-hidden="true" />
                     </button>
                 </div>
 
@@ -649,8 +656,10 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                             ].map((opt) => (
                                 <button
                                     key={opt.id}
+                                    type="button"
                                     onClick={() => setSortOption(opt.id)}
-                                    className={`px-4 py-2.5 rounded-xl border flex items-center gap-2 text-sm font-bold whitespace-nowrap transition-all ${
+                                    aria-pressed={sortOption === opt.id}
+                                    className={`px-4 py-2.5 rounded-xl border flex items-center gap-2 text-sm font-bold whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                                         sortOption === opt.id
                                         ? 'bg-primary/10 border-primary text-primary'
                                         : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
@@ -673,7 +682,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                 return (
                                     <button
                                         key={type}
+                                        type="button"
                                         onClick={() => togglePropertyType(type)}
+                                        aria-pressed={isSelected}
                                         className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
                                             isSelected
                                             ? 'bg-gray-900 text-white border-gray-900 shadow-md'
@@ -695,8 +706,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                         </div>
                         <div className="flex gap-3">
                             <div className="flex-1 bg-white p-3 rounded-xl border border-gray-200 focus-within:border-primary transition-colors shadow-sm">
-                                <label className="block text-[10px] text-gray-400 uppercase font-bold">Min Price</label>
+                                <label htmlFor="filter-min-price" className="block text-[10px] text-gray-400 uppercase font-bold">Min Price</label>
                                 <input
+                                    id="filter-min-price"
                                     type="number"
                                     value={priceRange[0]}
                                     onChange={(e) => setPriceRange([Number(e.target.value), priceRange[1]])}
@@ -704,8 +716,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                 />
                             </div>
                             <div className="flex-1 bg-white p-3 rounded-xl border border-gray-200 focus-within:border-primary transition-colors shadow-sm">
-                                <label className="block text-[10px] text-gray-400 uppercase font-bold">Max Price</label>
+                                <label htmlFor="filter-max-price" className="block text-[10px] text-gray-400 uppercase font-bold">Max Price</label>
                                 <input
+                                    id="filter-max-price"
                                     type="number"
                                     value={priceRange[1]}
                                     onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])}
@@ -731,12 +744,16 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                     </label>
                                     <div className="flex items-center gap-1 bg-white p-1.5 rounded-full justify-between shadow-sm">
                                         <button
+                                            type="button"
                                             onClick={() => setMinBedrooms(Math.max(0, minBedrooms - 1))}
+                                            aria-label="Decrease minimum bedrooms"
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >-</button>
                                         <span className="text-sm font-bold">{minBedrooms > 0 ? minBedrooms + '+' : 'Any'}</span>
                                         <button
+                                            type="button"
                                             onClick={() => setMinBedrooms(minBedrooms + 1)}
+                                            aria-label="Increase minimum bedrooms"
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >+</button>
                                     </div>
@@ -748,12 +765,16 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                     </label>
                                     <div className="flex items-center gap-1 bg-white p-1.5 rounded-full justify-between shadow-sm">
                                         <button
+                                            type="button"
                                             onClick={() => setMinBathrooms(Math.max(0, minBathrooms - 1))}
+                                            aria-label="Decrease minimum bathrooms"
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >-</button>
                                         <span className="text-sm font-bold">{minBathrooms > 0 ? minBathrooms + '+' : 'Any'}</span>
                                         <button
+                                            type="button"
                                             onClick={() => setMinBathrooms(minBathrooms + 1)}
+                                            aria-label="Increase minimum bathrooms"
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >+</button>
                                     </div>
@@ -762,7 +783,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
                              {/* Furnished & Serviced Toggles */}
                              <div className="space-y-2">
-                                <div
+                                <button
+                                    type="button"
+                                    aria-pressed={reqFurnished}
                                     className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
                                         reqFurnished
                                         ? 'bg-primary border-primary text-white shadow-md'
@@ -775,9 +798,11 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                         <span className="text-sm font-bold">Furnished</span>
                                     </div>
                                     {reqFurnished && <Check size={16} />}
-                                </div>
+                                </button>
 
-                                <div
+                                <button
+                                    type="button"
+                                    aria-pressed={reqServiced}
                                     className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
                                         reqServiced
                                         ? 'bg-primary border-primary text-white shadow-md'
@@ -790,7 +815,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                         <span className="text-sm font-bold">Serviced</span>
                                     </div>
                                     {reqServiced && <Check size={16} />}
-                                </div>
+                                </button>
                             </div>
                         </div>
                     )}
@@ -836,6 +861,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                 </div>
                                 <input
                                     type="range"
+                                    aria-label="Minimum event guest capacity"
                                     min="0"
                                     max="5000"
                                     step="100"
@@ -865,19 +891,25 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                             </div>
                             <div className="flex items-center gap-1 bg-white border border-gray-200 p-1.5 rounded-full shadow-sm">
                                 <button
+                                    type="button"
                                     onClick={() => setMinParking(Math.max(0, minParking - 10))}
+                                    aria-label="Decrease minimum parking spaces"
                                     className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                 >-</button>
                                 <span className="w-12 text-center font-bold text-sm">{minParking}+</span>
                                 <button
+                                    type="button"
                                     onClick={() => setMinParking(minParking + 10)}
+                                    aria-label="Increase minimum parking spaces"
                                     className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                 >+</button>
                             </div>
                         </div>
 
                         {/* Generator Toggle */}
-                        <div
+                        <button
+                            type="button"
+                            aria-pressed={reqGenerator}
                             className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${
                                 reqGenerator
                                 ? 'bg-primary-container border-primary-container shadow-md'
@@ -899,25 +931,27 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                             }`}>
                                 {reqGenerator && <Check size={14} className="text-white" />}
                             </div>
-                        </div>
+                        </button>
                     </div>
                 </div>
 
                 <div className="mt-8 flex gap-3 pt-4 border-t border-gray-100">
                     <button
+                        type="button"
                         onClick={resetFilters}
                         className="flex-1 py-4 text-gray-600 font-bold hover:bg-gray-100 rounded-2xl transition-colors"
                     >
                         Reset
                     </button>
                     <button
+                        type="button"
                         onClick={() => setIsFilterOpen(false)}
                         className="flex-[2] py-4 bg-primary text-white font-bold rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary/90 active:scale-95 transition-all"
                     >
-                        Show {filteredProperties.length} Results
+                        Show <span aria-live="polite">{filteredProperties.length} {filteredProperties.length === 1 ? 'result' : 'results'}</span>
                     </button>
                 </div>
-            </div>
+            </section>
         </div>
       )}
 

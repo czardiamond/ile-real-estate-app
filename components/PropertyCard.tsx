@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { Property, PropertyType } from '../types';
-import { MapPin, Bed, Bath, Users, Maximize2, ShieldCheck, MessageCircle, Box, Check, Scale, Play, ImageOff, Heart } from 'lucide-react';
+import { Bath, Bed, Box, Heart, ImageOff, MapPin, Maximize2, MessageCircle, Play, Scale, ShieldCheck, Users } from 'lucide-react';
 
 interface PropertyCardProps {
   property: Property;
@@ -23,238 +22,163 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
   onClick,
   onChat,
   onView3D,
-  onViewFloorPlan,
   onCompare,
   isSelectable = false,
   isSelected = false,
   isCompared = false,
   compact = false,
   isSaved = false,
-  onToggleSave
+  onToggleSave,
 }) => {
-  const formatCurrency = (price: number) => {
-    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumSignificantDigits: 3 }).format(price);
-  };
+  const formatCurrency = (price: number) => new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(price);
 
-  const isOwambe = [
-    PropertyType.EVENT_CENTER,
-    PropertyType.WEDDING_HALL,
-    PropertyType.PARTY_VENUE,
-    PropertyType.OPEN_FIELD
-  ].includes(property.type);
+  const isEvent = [PropertyType.EVENT_CENTER, PropertyType.WEDDING_HALL, PropertyType.PARTY_VENUE, PropertyType.OPEN_FIELD].includes(property.type);
+  const isBusiness = [PropertyType.OFFICE, PropertyType.SHOP, PropertyType.WAREHOUSE, PropertyType.CONTAINER].includes(property.type);
+  const imageUrl = Array.isArray(property.images) ? property.images[0] : undefined;
 
-  const isBusiness = [
-    PropertyType.OFFICE,
-    PropertyType.SHOP,
-    PropertyType.WAREHOUSE,
-    PropertyType.CONTAINER
-  ].includes(property.type);
-
-  const isHighlighted = isSelected || isCompared;
-
-  // Handles fetching and displaying property media (Images & Video)
-  const renderPropertyMedia = () => {
-    const hasImages = Array.isArray(property.images) && property.images.length > 0;
-    const imageUrl = hasImages ? property.images[0] : null;
-    const hasVideo = !!property.videoUrl;
-
-    return (
-      <>
-        {imageUrl ? (
-              <img
-                src={imageUrl}
-            alt={property.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-            loading="lazy"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.onerror = null;
-              target.src = "/property-placeholder.svg";
-            }}
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 text-gray-400">
-             <ImageOff size={32} className="opacity-50 mb-2" />
-             <span className="text-xs font-medium opacity-70">No Image Available</span>
-          </div>
-        )}
-
-        {/* Gradient Overlay for Text Visibility */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-
-        {/* Video Play Button Overlay */}
-        {hasVideo && (
-            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-                <div
-                    className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center border border-white/40 shadow-lg group-hover:scale-110 transition-transform duration-300"
-                >
-                    <Play size={16} className="text-white fill-white ml-1" />
-                </div>
-            </div>
-        )}
-      </>
-    );
-  };
+  const openDetails = () => onClick();
 
   return (
-    <div
-      onClick={onClick}
-      className={`bg-white transition-all cursor-pointer group flex flex-col h-full relative overflow-hidden border ${
-        compact
-          ? 'rounded-2xl p-2 shadow-sm border-gray-100'
-          : 'rounded-3xl shadow-sm hover:shadow-xl border-gray-100'
-      } ${
-        isHighlighted
-        ? 'ring-2 ring-primary'
-        : ''
-      }`}
-    >
-      {/* Selection Overlay */}
-      {(isSelectable || isHighlighted) && (
-          <div className="absolute top-4 left-4 z-20 animate-in fade-in duration-200">
-              <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors shadow-sm ${
-                  isHighlighted
-                  ? 'bg-primary border-primary'
-                  : 'bg-white/90 border-gray-400'
-              }`}>
-                  {isHighlighted && <Check size={14} className="text-white" strokeWidth={3} />}
-              </div>
-          </div>
-      )}
+    <article className={`group flex h-full flex-col overflow-hidden rounded-2xl border bg-surface-container-low transition-shadow ${isSelected || isCompared ? 'border-primary ring-2 ring-primary/30' : 'border-outline-variant hover:shadow-lg'}`}>
+      <div className={`relative w-full overflow-hidden bg-surface-container ${compact ? 'h-36' : 'aspect-[16/10]'}`}>
+        <button
+          type="button"
+          onClick={openDetails}
+          aria-pressed={isSelectable ? isSelected : undefined}
+          aria-label={isSelectable ? `${isSelected ? 'Remove' : 'Add'} ${property.title} ${isSelected ? 'from' : 'to'} comparison` : `View ${property.title}`}
+          className="absolute inset-0 block h-full w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+        >
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={`${property.title} property photo`}
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              loading="lazy"
+              onError={(event) => {
+                const image = event.currentTarget;
+                image.onerror = null;
+                image.src = '/property-placeholder.svg';
+              }}
+            />
+          ) : (
+            <span className="flex h-full w-full flex-col items-center justify-center gap-2 text-on-surface-variant">
+              <ImageOff size={28} aria-hidden="true" />
+              <span className="text-xs font-medium">No photo provided</span>
+            </span>
+          )}
+        </button>
 
-      {/* Image Container */}
-      <div className={`relative w-full bg-surface-container overflow-hidden ${compact ? 'h-36 rounded-2xl mb-3' : 'h-72'}`}>
+        {isSelectable && (
+          <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); openDetails(); }}
+            aria-label={`${isSelected ? 'Remove' : 'Select'} ${property.title} for comparison`}
+            aria-pressed={isSelected}
+            className={`absolute left-3 top-3 z-20 flex h-9 min-w-9 items-center justify-center rounded-lg border px-2 text-xs font-bold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isSelected ? 'border-[#213b31] bg-[#213b31] text-white' : 'border-outline bg-white text-on-surface'}`}
+          >
+            {isSelected ? 'Selected' : 'Select'}
+          </button>
+        )}
 
-        {renderPropertyMedia()}
-
-        {/* Floating Tag */}
-        <div className="flex items-center gap-1.5 absolute top-4 left-4 z-10">
-          <div className={`bg-white/90 backdrop-blur-md rounded-full font-bold text-on-surface shadow-sm transition-all ${compact ? 'px-2.5 py-0.5 text-[10px]' : 'px-3.5 py-1.5 text-xs uppercase tracking-widest'}`}>
-              {property.type}
-          </div>
+        <div className={`pointer-events-none absolute left-3 z-10 flex max-w-[calc(100%-5.5rem)] flex-wrap items-center gap-2 ${isSelectable ? 'top-14' : 'top-3'}`}>
+          <span className="rounded-md border border-white/70 bg-white px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[#24352c] shadow-sm">{property.type}</span>
           {property.isVerified && (
-            <div className={`bg-emerald-700 text-white rounded-full font-bold shadow-sm flex items-center gap-1 ${compact ? 'px-2 py-0.5 text-[9px]' : 'px-2.5 py-1 text-[11px]'}`} title="Ilé has recorded an internal document review. This is not a government title search.">
-              <ShieldCheck size={compact ? 10 : 13} />
-              <span>Ilé reviewed</span>
-            </div>
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#28503F] px-2 py-1 text-[11px] font-semibold text-white" title="Ilé has recorded an internal document review. This is not a government title search.">
+              <ShieldCheck size={13} aria-hidden="true" /> Ilé reviewed
+            </span>
           )}
         </div>
 
-        {/* Favorite Button */}
         {!compact && onToggleSave && (
-            <button
-                onClick={(e) => { e.stopPropagation(); onToggleSave(); }}
-                className="absolute top-3 right-3 p-2 bg-white/20 backdrop-blur-md hover:bg-white rounded-full transition-all z-20 group/heart"
-            >
-                <Heart size={18} className={`transition-colors ${isSaved ? 'text-red-500 fill-red-500' : 'text-white group-hover/heart:text-red-500'}`} />
-            </button>
+          <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); onToggleSave(); }}
+            aria-label={isSaved ? `Remove ${property.title} from saved properties` : `Save ${property.title}`}
+            aria-pressed={isSaved}
+            className="absolute right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-outline bg-white text-on-surface shadow-sm transition-colors hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Heart size={18} fill={isSaved ? 'currentColor' : 'none'} className={isSaved ? 'text-[#9b3e37]' : 'text-on-surface-variant'} aria-hidden="true" />
+          </button>
         )}
 
-        {/* 3D Tour Button Overlay */}
         {property.virtualTourUrl && !compact && (
-            <button
-                onClick={(e) => { e.stopPropagation(); onView3D && onView3D(property); }}
-                className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm text-white hover:bg-black transition-colors z-20 border border-white/10"
-            >
-                <Box size={14} className="text-white" />
-                3D Tour
-            </button>
+          <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); onView3D?.(property); }}
+            className="absolute bottom-3 left-3 z-20 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[#202923] px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#314137] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          >
+            <Box size={14} aria-hidden="true" /> 3D tour
+          </button>
         )}
 
-        {/* Price Overlay (Mobile or Compact) */}
-        {compact && (
-             <div className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-md rounded-lg px-2 py-1">
-                <p className="text-white font-bold text-xs">{formatCurrency(property.price)}</p>
-             </div>
-        )}
+        {compact && <span className="absolute bottom-2 right-2 rounded-md bg-[#202923] px-2 py-1 text-xs font-bold text-white">{formatCurrency(property.price)}</span>}
+        {property.videoUrl && <span className="pointer-events-none absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#24352c] shadow-sm"><Play size={15} fill="currentColor" aria-label="Video available" /></span>}
       </div>
 
-      {/* Content */}
-      <div className={`flex-1 flex flex-col ${compact ? 'px-2 pb-2' : 'p-8 pt-6'}`}>
-
-        {/* Header Section */}
-        <div className="flex justify-between items-start mb-4">
-            <div className="flex-1 min-w-0">
-                {!compact && (
-                    <h2 className="text-3xl font-light text-primary mb-2 tracking-tight">
-                        {formatCurrency(property.price)}
-                        <span className="text-sm text-on-surface-variant/60 font-normal ml-2">
-                             {property.period && property.period !== 'total' ? `/ ${property.period.replace('per ', '')}` : ''}
-                        </span>
-                    </h2>
-                )}
-                <h3 className={`font-medium text-on-surface leading-tight ${compact ? 'text-sm mb-1' : 'text-xl mb-2'}`}>
-                    {property.title}
-                </h3>
-            </div>
-        </div>
-
-        {/* Location */}
-        <div className={`flex items-center text-on-surface-variant/70 mb-6 ${compact ? 'text-[10px]' : 'text-sm font-light'}`}>
-            <MapPin size={compact ? 10 : 14} className="mr-1.5 opacity-50 shrink-0" />
-            <span className="truncate">{property.location.area}, {property.location.city}</span>
-        </div>
-
-        {/* Specs Grid - Subtle Icons */}
-        <div className={`flex items-center gap-6 text-on-surface-variant/60 ${compact ? 'text-[10px] mb-3' : 'text-xs mb-8'}`}>
-            {!isBusiness && !isOwambe && (
-                <>
-                    <div className="flex items-center gap-2">
-                        <Bed size={compact ? 12 : 16} strokeWidth={1.5} />
-                        <span>{property.specs.bedrooms ?? '—'}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Bath size={compact ? 12 : 16} strokeWidth={1.5} />
-                        <span>{property.specs.bathrooms ?? '—'}</span>
-                    </div>
-                </>
-            )}
-            {(isOwambe || isBusiness) && (
-                    <div className="flex items-center gap-2">
-                    {isOwambe ? <Users size={compact ? 12 : 16} strokeWidth={1.5} /> : <Maximize2 size={compact ? 12 : 16} strokeWidth={1.5} />}
-                    <span>{(isOwambe ? property.specs.capacity : property.specs.sizeSqM) ?? '—'} {isOwambe ? 'Guests' : 'm²'}</span>
-                </div>
-            )}
-        </div>
-
-        {/* Footer: Agent & Actions */}
+      <div className={`flex flex-1 flex-col ${compact ? 'p-3' : 'p-5 md:p-6'}`}>
         {!compact && (
-            <div className="mt-auto flex items-center justify-between pt-6 border-t border-outline-variant/10">
-                 {/* Listing owner info */}
-                 <div className="flex items-center gap-3">
-                     <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant"><Users size={18} /></div>
-                     <div className="flex flex-col">
-                         <span className="text-xs font-medium text-on-surface">Listing owner</span>
-                         <span className="text-[10px] text-on-surface-variant/60 uppercase tracking-widest">Ilé account</span>
-                     </div>
-                 </div>
+          <p className="text-2xl font-semibold tracking-tight text-on-surface">
+            {formatCurrency(property.price)}
+            {property.period && property.period !== 'total' && <span className="ml-1.5 text-sm font-medium text-on-surface-variant">/ {property.period.replace(/^per\s+/i, '')}</span>}
+          </p>
+        )}
 
-                 {/* Actions */}
-                 {!isSelectable && (
-                     <div className="flex items-center gap-2">
-                         <button
-                            onClick={(e) => { e.stopPropagation(); onCompare && onCompare(property); }}
-                            className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
-                                isCompared
-                                ? 'bg-primary-container text-primary border-primary'
-                                : 'bg-white border-gray-200 text-gray-400 hover:text-gray-900 hover:border-gray-300'
-                            }`}
-                            title="Compare"
-                         >
-                             <Scale size={14} />
-                         </button>
-                         <button
-                            onClick={(e) => { e.stopPropagation(); onChat && onChat(property); }}
-                            className="bg-gray-900 text-white px-4 py-2 rounded-full text-xs font-bold hover:bg-black transition-colors flex items-center gap-1"
-                        >
-                            <MessageCircle size={14} /> Chat
-                        </button>
-                     </div>
-                 )}
+        <h3 className={`${compact ? 'text-sm' : 'mt-1 text-lg'} font-semibold leading-snug text-on-surface`}>
+          <button type="button" onClick={openDetails} className="rounded-sm text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            {property.title}
+          </button>
+        </h3>
+
+        <p className="mt-2 flex items-start gap-1.5 text-sm leading-5 text-on-surface-variant">
+          <MapPin size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>{property.location.area}, {property.location.city}</span>
+        </p>
+
+        <div className={`mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-outline-variant pt-4 text-xs font-medium text-on-surface-variant ${compact ? 'mt-3 pt-3' : ''}`} aria-label="Property details">
+          {!isBusiness && !isEvent && (
+            <>
+              <span className="inline-flex items-center gap-1.5"><Bed size={15} aria-hidden="true" />{property.specs.bedrooms ?? '—'} beds</span>
+              <span className="inline-flex items-center gap-1.5"><Bath size={15} aria-hidden="true" />{property.specs.bathrooms ?? '—'} baths</span>
+            </>
+          )}
+          {(isEvent || isBusiness) && (
+            <span className="inline-flex items-center gap-1.5">
+              {isEvent ? <Users size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+              {isEvent ? `${property.specs.capacity ?? '—'} guests` : `${property.specs.sizeSqM ?? '—'} m²`}
+            </span>
+          )}
+        </div>
+
+        {!compact && !isSelectable && (
+          <div className="mt-auto flex items-center justify-between gap-3 border-t border-outline-variant pt-4">
+            <div className="flex min-w-0 items-center gap-2 text-xs text-on-surface-variant">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-container"><Users size={15} aria-hidden="true" /></span>
+              <span className="truncate">Listing owner</span>
             </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {onCompare && (
+                <button
+                  type="button"
+                  onClick={(event) => { event.stopPropagation(); onCompare(property); }}
+                  aria-label={`${isCompared ? 'Remove' : 'Add'} ${property.title} ${isCompared ? 'from' : 'to'} comparison`}
+                  aria-pressed={isCompared}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isCompared ? 'border-primary bg-primary/10 text-primary' : 'border-outline bg-surface-container-low text-on-surface-variant hover:bg-surface-container'}`}
+                ><Scale size={17} aria-hidden="true" /></button>
+              )}
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); onChat?.(property); }}
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-[#213b31] px-3.5 text-xs font-semibold text-white transition-colors hover:bg-[#294b3e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              ><MessageCircle size={15} aria-hidden="true" />Enquire</button>
+            </div>
+          </div>
         )}
       </div>
-    </div>
+    </article>
   );
 };
 

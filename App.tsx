@@ -13,6 +13,8 @@ import { fetchProperties, createProperty, updatePropertyDescription } from './sr
 import { storage } from './src/lib/firebase';
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { useToast } from './src/context/ToastContext';
+import { AboutView, GuideView } from './components/InfoPages';
+import SiteFooter from './components/SiteFooter';
 
 const ExploreView = lazy(() => import('./components/ExploreView'));
 const AgentDashboard = lazy(() => import('./components/AgentDashboard'));
@@ -428,6 +430,28 @@ const App: React.FC = () => {
       );
     }
 
+    if (activeTab === 'guide' || activeTab === 'about') {
+      const onBack = () => handleTabChange('explore');
+      return (
+        <div className="min-h-screen bg-surface">
+          <header className="flex min-h-[68px] items-center justify-between border-b border-outline-variant bg-surface px-4 md:px-8">
+            <button type="button" onClick={onBack} className="inline-flex items-center gap-3 rounded-lg text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Back to Ilé listings">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#213b31] text-white"><span className="font-display text-xl font-semibold">I</span></span>
+              <span className="font-display text-2xl font-semibold">Ilé</span>
+            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setIsGuestAuthScreenOpen(true)} className="min-h-10 rounded-lg px-3 text-sm font-semibold text-on-surface-variant hover:bg-surface-container">Sign in</button>
+              <button type="button" onClick={() => setIsGuestAuthScreenOpen(true)} className="min-h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/90">Create account</button>
+            </div>
+          </header>
+          {activeTab === 'guide'
+            ? <GuideView onBack={onBack} onExplore={onBack} />
+            : <AboutView onBack={onBack} onExplore={onBack} />}
+          <SiteFooter onNavigate={handleTabChange} />
+        </div>
+      );
+    }
+
     if (selectedProperty) {
       return (
         <div className="min-h-screen bg-surface pb-12">
@@ -462,6 +486,7 @@ const App: React.FC = () => {
               </div>
             </div>
           </main>
+          <SiteFooter onNavigate={handleTabChange} />
           {viewing3DTour && previewProperty?.virtualTourUrl && (
             <div className="fixed inset-0 z-[100] flex flex-col bg-black">
               <div className="flex items-center justify-between p-4 text-white"><h2 className="font-bold">3D Virtual Tour</h2><button onClick={() => setViewing3DTour(false)} aria-label="Close virtual tour"><X size={22} /></button></div>
@@ -480,14 +505,14 @@ const App: React.FC = () => {
 
     return (
       <div className="min-h-screen bg-surface">
-        <header className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between border-b border-outline-variant/20 bg-surface/95 px-4 backdrop-blur md:px-8">
-          <a href="/" className="text-xl font-extrabold tracking-tight text-primary">Ilé</a>
+        <header className="fixed inset-x-0 top-0 z-40 flex h-[68px] items-center justify-between border-b border-outline-variant bg-surface px-4 md:px-8">
+          <a href="/" className="font-display text-2xl font-semibold tracking-tight text-on-surface">Ilé</a>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => { setIsGuestAuthScreenOpen(true); }} className="rounded-xl px-3 py-2 text-sm font-semibold text-on-surface-variant">Sign in</button>
-            <button type="button" onClick={() => { setIsGuestAuthScreenOpen(true); }} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white">Create account</button>
+            <button type="button" onClick={() => { setIsGuestAuthScreenOpen(true); }} className="min-h-10 rounded-lg px-3 text-sm font-semibold text-on-surface-variant">Sign in</button>
+            <button type="button" onClick={() => { setIsGuestAuthScreenOpen(true); }} className="min-h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white">Create account</button>
           </div>
         </header>
-        <main className="pt-16">
+        <main className="pt-[68px]">
           <Suspense fallback={<div role="status" className="min-h-[40vh] flex items-center justify-center text-sm text-on-surface-variant">Loading marketplace…</div>}>
             <ExploreView
               properties={allProperties}
@@ -497,11 +522,11 @@ const App: React.FC = () => {
               onViewFloorPlan={handleViewFloorPlan}
               savedPropertyIds={savedPropertyIds}
               onToggleSave={handleToggleSave}
-              onOpenMortgageCalculator={() => {}}
             />
           </Suspense>
-          <div className="mx-auto max-w-7xl px-4 pb-8 text-center text-xs text-on-surface-variant">Browse Ilé listings without an account. Sign in to contact owners or manage listings.</div>
+          <div className="mx-auto max-w-7xl px-4 pb-7 pt-2 text-center text-sm text-on-surface-variant">Browse public Ilé listings without an account. Sign in to contact owners or manage listings.</div>
         </main>
+        <SiteFooter onNavigate={handleTabChange} />
         {viewing3DTour && previewProperty?.virtualTourUrl && (
           <div className="fixed inset-0 z-[100] flex flex-col bg-black">
             <div className="flex items-center justify-between p-4 text-white"><h2 className="font-bold">3D Virtual Tour</h2><button onClick={() => setViewing3DTour(false)} aria-label="Close virtual tour"><X size={22} /></button></div>
@@ -857,7 +882,7 @@ const App: React.FC = () => {
 
   // --- MAIN APP RENDER ---
   return (
-    <div className="bg-surface min-h-screen pb-20 md:pb-0 font-sans">
+    <div className="min-h-screen bg-surface pb-20 font-sans md:pb-0">
       <Navigation 
         currentRole={currentUser.role} 
         activeTab={activeTab} 
@@ -865,12 +890,10 @@ const App: React.FC = () => {
         isDarkMode={isDarkMode}
         onToggleTheme={handleToggleTheme}
         user={currentUser}
-        onOpenLandTitleUpload={() => setIsLandTitleUploadModalOpen(true)}
-        onOpenAdminPanel={currentUser.role === UserRole.ADMIN ? () => setIsAdminVerificationPanelOpen(true) : undefined}
       />
 
       <Suspense fallback={<div role="status" className="min-h-[40vh] flex items-center justify-center text-sm text-on-surface-variant">Loading Ilé…</div>}>
-      <main className="pt-20 md:pt-24 h-full min-h-screen">
+      <main className="h-full min-h-screen">
           {activeTab === 'explore' && (
               <ExploreView 
                 properties={allProperties}
@@ -880,7 +903,6 @@ const App: React.FC = () => {
                 onViewFloorPlan={handleViewFloorPlan}
                 savedPropertyIds={savedPropertyIds}
                 onToggleSave={handleToggleSave}
-                onOpenMortgageCalculator={() => setIsMortgageCalculatorOpen(true)}
               />
           )}
 
@@ -940,6 +962,14 @@ const App: React.FC = () => {
               <AIChat user={currentUser} />
           )}
 
+          {activeTab === 'guide' && (
+              <GuideView onBack={() => handleTabChange('explore')} onExplore={() => handleTabChange('explore')} />
+          )}
+
+          {activeTab === 'about' && (
+              <AboutView onBack={() => handleTabChange('explore')} onExplore={() => handleTabChange('explore')} />
+          )}
+
           {activeTab === 'menu' && (
               <ProfileSettingsView 
                 user={currentUser} 
@@ -952,6 +982,7 @@ const App: React.FC = () => {
               />
           )}
       </main>
+      <SiteFooter onNavigate={handleTabChange} />
 
       {/* Global Modals */}
       {chatProperty && !selectedProperty && (

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import type { User } from '../types';
 import {
   User as UserIcon, Settings, Shield, Lock, Info, LogOut,
-  ChevronRight, Bell, Globe, Moon, HelpCircle,
+  ChevronRight, Globe, Moon, HelpCircle,
   FileText, CheckCircle, AlertTriangle, ArrowLeft, Save, Mail, MessageSquare, CloudCheck, Loader2
 } from 'lucide-react';
 import Logo from './Logo';
@@ -21,7 +21,7 @@ interface ProfileSettingsViewProps {
   onOpenAdminPanel?: () => void;
 }
 
-type SubView = 'main' | 'personal-info' | 'about' | 'privacy' | 'notifications';
+type SubView = 'main' | 'personal-info' | 'about' | 'privacy';
 
 const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
   user,
@@ -180,15 +180,27 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
   );
 
   const AboutView = () => (
-    <div className="min-h-full bg-white pb-8">
+    <div className="min-h-full bg-surface pb-8">
       <Header title="About Ilé" onBack={() => setCurrentView('main')} />
-      <div className="p-6 max-w-lg mx-auto text-center">
-        <div className="w-20 h-20 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6"><Logo size={40} /></div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">Ilé</h3>
-        <p className="text-gray-600">A real-estate marketplace for listings, property enquiries and account management.</p>
-        <div className="mt-6 text-left space-y-3 bg-gray-50 p-5 rounded-2xl border border-gray-100 text-sm text-gray-700">
-          <p>Listings, photos and enquiries use Firebase when the project is correctly configured.</p>
-          <p>Ilé does not currently provide online rent or purchase payments, government title searches, identity verification, automated email alerts, or independent safety and valuation data.</p>
+      <div className="mx-auto max-w-2xl px-5 py-8">
+        <div className="mb-7 flex items-center gap-4">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#213b31] text-white"><Logo size={36} /></div>
+          <div><p className="font-display text-3xl font-semibold text-on-surface">Ilé</p><p className="mt-1 text-sm text-on-surface-variant">Property, considered.</p></div>
+        </div>
+        <div className="space-y-5">
+          <section className="rounded-2xl border border-outline-variant bg-surface-container-low p-5">
+            <h3 className="font-semibold text-on-surface">What you can do here</h3>
+            <p className="mt-2 text-sm leading-6 text-on-surface-variant">Browse and compare public listings, save options in this browser, contact owners after signing in, manage listings, and prepare AI-assisted listing drafts. Ilé’s current listing taxonomy focuses on Nigeria; global inventory is not established.</p>
+          </section>
+          <section className="rounded-2xl border border-outline-variant bg-surface-container-low p-5">
+            <h3 className="font-semibold text-on-surface">What is not connected</h3>
+            <p className="mt-2 text-sm leading-6 text-on-surface-variant">Ilé does not process payments or escrow, perform identity checks or government title searches, send email or push alerts, or provide independently verified valuations or neighbourhood safety data. An internal document review is not proof of ownership or a legal opinion.</p>
+          </section>
+          <section className="rounded-2xl border border-outline-variant bg-surface-container-low p-5">
+            <h3 className="font-semibold text-on-surface">Copyright & software licensing</h3>
+            <p className="mt-2 text-sm leading-6 text-on-surface-variant">© {new Date().getFullYear()} Ilé. No standalone open-source license for this application is published in the repository. Third-party libraries and external assets remain subject to their own licenses and terms. This information is not legal advice.</p>
+          </section>
+          <p className="text-xs leading-5 text-on-surface-variant">Listing details and photos are provided by contributors. Confirm availability, ownership documents, fees and terms independently before committing.</p>
         </div>
       </div>
     </div>
@@ -205,15 +217,6 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
         <p>When an AI feature is used, the relevant prompt and listing or enquiry context is sent to the AI provider configured by the site operator. Do not submit identity numbers, payment details, or other sensitive personal information.</p>
         <h3>Before launch</h3>
         <p>Configure Firebase access rules, retention and deletion processes, provider agreements, a verified privacy contact and a jurisdiction-appropriate notice. Title documents are private to their owner and authorized reviewers when the security rules are deployed.</p>
-      </div>
-    </div>
-  );
-
-  const NotificationsView = () => (
-    <div className="min-h-full bg-gray-50 pb-8">
-      <Header title="Notifications" onBack={() => setCurrentView('main')} />
-      <div className="p-6 max-w-lg mx-auto bg-white mt-4 rounded-2xl border border-gray-200 text-sm text-gray-700">
-        Email and push delivery are not connected. The app will not send listing, price-drop, message or marketing notifications.
       </div>
     </div>
   );
@@ -241,7 +244,6 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
   if (currentView === 'personal-info') return <PersonalInfoView />;
   if (currentView === 'about') return <AboutView />;
   if (currentView === 'privacy') return <PrivacyView />;
-  if (currentView === 'notifications') return <NotificationsView />;
 
   return (
     <div className="pb-24 max-w-2xl mx-auto">
@@ -322,18 +324,6 @@ const ProfileSettingsView: React.FC<ProfileSettingsViewProps> = ({
                   onClick={onOpenAdminPanel}
               />
             )}
-          </div>
-        </div>
-
-        {/* Section: App Settings */}
-        <div>
-          <h3 className="px-2 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Preferences</h3>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <MenuItem
-                icon={Bell}
-                label="Notifications"
-                onClick={() => setCurrentView('notifications')}
-            />
           </div>
         </div>
 
