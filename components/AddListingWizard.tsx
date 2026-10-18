@@ -5,6 +5,7 @@ import { generateListingFromRawText, processVoiceNoteToListing, transcribeAudioT
 import { Sparkles, ArrowRight, Mic, MicOff, CheckCircle, AlertCircle, Loader2, Image as ImageIcon, Trash2, Plus, X, Video, FileText, MapPin, AlertTriangle, Check, LayoutGrid, Coffee, Shield, Radio, Volume2, FileEdit, Building2, DollarSign, Sliders, CheckSquare, LayoutTemplate } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+import { createSubmissionGate } from '../services/listingPublish';
 
 // Fix for default Leaflet icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -16,9 +17,10 @@ L.Icon.Default.mergeOptions({
 
 interface AddListingWizardProps {
   onCancel: () => void;
-  onComplete: (data: SmartListingResponse & { mediaFiles: { images: File[]; video?: File; floorPlan?: File } }) => void;
+  onComplete: (data: SmartListingResponse & { mediaFiles: { images: File[]; video?: File; floorPlan?: File } }) => Promise<void>;
   initialInput?: string;
   initialMode?: 'ai' | 'manual';
+  aiEnabled?: boolean;
 }
 
 const LocationPicker = ({ position, setPosition }: { position?: {lat: number, lng: number} | null, setPosition: (pos: {lat: number, lng: number}) => void }) => {
@@ -48,6 +50,7 @@ const ALLOWED_LISTING_FEATURES = new Set(Object.values(FEATURES_BY_TYPE).flat().
   'Backup Generator', 'Swimming Pool', '24/7 Security', 'Water Heater', 'Serviced', 'Prepaid Meter',
   'Solar Powered', 'Ample Parking',
 ]));
+const SUPPORTED_PROPERTY_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
 
 const PROPERTY_TYPES_BY_CATEGORY = {
     RESIDENTIAL: ['Apartment', 'House', 'Duplex', 'Bungalow', 'Short-let', 'Guest House', 'Other'],
@@ -56,9 +59,45 @@ const PROPERTY_TYPES_BY_CATEGORY = {
     LAND: ['Land', 'Other'],
 };
 
-const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplete, initialInput = '', initialMode = 'ai' }) => {
+const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplete, initialInput = '', initialMode = 'ai', aiEnabled = true }) => {
   const [step, setStep] = useState<'input' | 'processing' | 'review'>('input');
-  const [listingMode, setListingMode] = useState<'ai' | 'manual'>(initialMode);
+  const [listingMode, setListingMode] = useState<'ai' | 'manual'>(aiEnabled ? initialMode : 'manual');
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishError, setPublishError] = useState('');
+  const submitOnce = useRef(createSubmissionGate());
+
+  const publishListing = async (data: Parameters<AddListingWizardProps['onComplete']>[0]) => {
+    try {
+      await submitOnce.current(async () => {
+        setPublishError('');
+        setIsPublishing(true);
+        try {
+          await onComplete(data);
+        } finally {
+          setIsPublishing(false);
+        }
+      });
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : 'Publishing failed. Check your connection and try again.');
+    }
+  };
+
+  useEffect(() => {
+    if (!isPublishing) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeLeaving);
+    return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
+  }, [isPublishing]);
+
+  const publishFeedback = (
+    <div className="w-full" aria-live="polite">
+      {isPublishing && <p role="status" className="text-sm text-emerald-800 flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Uploading media and saving your listing. Keep this page open.</p>}
+      {publishError && <p role="alert" className="text-sm text-red-700 rounded-xl bg-red-50 border border-red-200 p-3">{publishError} Your details and selected files are still here. Review the error before trying again.</p>}
+    </div>
+  );
 
   const [rawInput, setRawInput] = useState(initialInput);
   const [generatedData, setGeneratedData] = useState<SmartListingResponse | null>(null);
@@ -135,6 +174,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
   }, []);
 
   const startVoiceRecording = async () => {
+    if (!aiEnabled) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
@@ -153,6 +193,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
         reader.onloadend = async () => {
+          if (!aiEnabled) return;
           const base64Data = (reader.result as string).split(',')[1];
           await processVoiceWithGemini({ type: 'audio', data: base64Data, mimeType: 'audio/webm' });
         };
@@ -180,6 +221,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
   };
 
   const stopVoiceRecording = () => {
+    if (!aiEnabled) return;
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -190,6 +232,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
 
   // Dedicated Handler for Auto-Transcribing Audio Note into Listing Description Field
   const startDescriptionVoiceRecording = async (targetMode: 'manual' | 'review' = 'manual') => {
+    if (!aiEnabled) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       descriptionAudioChunksRef.current = [];
@@ -207,6 +250,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
         reader.onloadend = async () => {
+          if (!aiEnabled) return;
           const base64Data = (reader.result as string).split(',')[1];
           await processDescriptionTranscription({ type: 'audio', data: base64Data, mimeType: 'audio/webm' }, targetMode);
         };
@@ -234,6 +278,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
   };
 
   const stopDescriptionVoiceRecording = () => {
+    if (!aiEnabled) return;
     if (descriptionMediaRecorderRef.current && isRecordingDescription) {
       descriptionMediaRecorderRef.current.stop();
       descriptionMediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -246,6 +291,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
     inputPayload: { type: 'audio' | 'text'; data: string; mimeType?: string },
     targetMode: 'manual' | 'review'
   ) => {
+    if (!aiEnabled) return;
     setIsTranscribingDescription(true);
     setTranscribeStatusMessage('Auto-transcribing audio note via Ilé AI speech transcription...');
 
@@ -270,6 +316,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
   };
 
   const processVoiceWithGemini = async (inputPayload: { type: 'audio' | 'text'; data: string; mimeType?: string }) => {
+    if (!aiEnabled) return;
     setIsProcessingVoice(true);
     setStep('processing');
     setVoiceStatusNote('Ilé AI is preparing a draft from your note...');
@@ -292,8 +339,8 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
     const filesArray = Array.from(e.target.files || []);
     if (filesArray.length === 0) return;
     const remaining = Math.max(0, 5 - uploadedImageFiles.length);
-    const accepted = filesArray.filter(file => file.type.startsWith('image/') && file.size <= 10 * 1024 * 1024).slice(0, remaining);
-    if (accepted.length !== filesArray.length) alert('Select up to 5 image files, each under 10MB.');
+    const accepted = filesArray.filter(file => SUPPORTED_PROPERTY_PHOTO_TYPES.has(file.type.toLowerCase()) && file.size <= 10 * 1024 * 1024).slice(0, remaining);
+    if (accepted.length !== filesArray.length) alert('Select up to 5 JPEG, PNG, WebP, AVIF, or GIF photos, each under 10MB.');
     const previews = accepted.map(file => {
       const url = URL.createObjectURL(file);
       previewUrlsRef.current.push(url);
@@ -392,7 +439,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
       mediaFiles: { images: uploadedImageFiles, video: uploadedVideoFile || undefined, floorPlan: uploadedFloorPlanFile || undefined },
     };
 
-    onComplete(finalData);
+    void publishListing(finalData);
   };
 
   const updateGeneratedLocation = (field: 'area' | 'state', value: string) => {
@@ -421,14 +468,14 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
             coordinates: coordinates || undefined,
             mediaFiles: { images: uploadedImageFiles, video: uploadedVideoFile || undefined, floorPlan: uploadedFloorPlanFile || undefined },
         };
-        onComplete(finalData);
+        void publishListing(finalData);
     }
   };
 
   // Step 1: Input Screen
   if (step === 'input') {
     return (
-      <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6">
+      <fieldset disabled={isPublishing} aria-busy={isPublishing} className="min-w-0 w-full p-4 md:p-8 max-w-3xl mx-auto space-y-6">
         <div>
             <button onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-900 mb-4">← Back to Veranda</button>
             <div className="flex items-center justify-between">
@@ -454,9 +501,9 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
 
         {/* Mode Selector Tabs */}
         <div className="flex bg-gray-100 p-1.5 rounded-2xl max-w-md border border-gray-200">
-            <button
+          {aiEnabled && <button
                 type="button"
-                onClick={() => setListingMode('ai')}
+                onClick={() => { if (aiEnabled) setListingMode('ai'); }}
                 className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                     listingMode === 'ai'
                         ? 'bg-emerald-800 text-white shadow-md'
@@ -465,7 +512,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
             >
                 <Sparkles size={16} />
                 <span>AI Listing Wizard</span>
-            </button>
+            </button>}
             <button
                 type="button"
                 onClick={() => setListingMode('manual')}
@@ -514,6 +561,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                           Property Category
                       </label>
                       <select
+                          aria-label="Property category"
                           value={manualCategory}
                           required
                           onChange={(e) => {
@@ -540,6 +588,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                           Sub-Type
                       </label>
                       <select
+                          aria-label="Property subtype"
                           value={manualType}
                           required
                           onChange={(e) => setManualType(e.target.value)}
@@ -604,6 +653,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                       </label>
                       <select
                           required
+                          aria-label="Price period"
                           value={manualPeriod}
                           onChange={(e) => setManualPeriod(e.target.value as any)}
                           className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm text-gray-900 font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
@@ -644,6 +694,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                           </label>
                           <select
                               required
+                              aria-label="Property state"
                               value={manualState}
                               onChange={(e) => setManualState(e.target.value)}
                               className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm text-gray-900 font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
@@ -821,11 +872,11 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                               Property Description & Agent Remarks
                           </label>
                           <p className="text-[11px] text-gray-500 mt-0.5">
-                              Type manually or tap the voice button to auto-transcribe directly into the description using Ilé AI speech transcription.
+                              {aiEnabled ? 'Type manually or tap the voice button to auto-transcribe directly into the description using Ilé AI speech transcription.' : 'Type your property description and agent remarks manually.'}
                           </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      {aiEnabled && <div className="flex items-center gap-2">
                           {!isRecordingDescription ? (
                               <button
                                   type="button"
@@ -847,17 +898,17 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                                   <span>Stop Recording (0:{descriptionRecordingSeconds < 10 ? '0' : ''}{descriptionRecordingSeconds}s)</span>
                               </button>
                           )}
-                      </div>
+                      </div>}
                   </div>
 
-                  {isTranscribingDescription && (
+                  {aiEnabled && isTranscribingDescription && (
                       <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 animate-pulse">
                           <Loader2 size={16} className="animate-spin text-emerald-600 shrink-0" />
                           <span>Ilé AI is transcribing your note...</span>
                       </div>
                   )}
 
-                  {transcribeStatusMessage && !isTranscribingDescription && (
+                  {aiEnabled && transcribeStatusMessage && !isTranscribingDescription && (
                       <div className="p-2.5 bg-emerald-100/80 border border-emerald-300 text-emerald-950 rounded-xl text-xs font-bold flex items-center gap-2">
                           <CheckCircle size={16} className="text-emerald-700 shrink-0" />
                           <span>{transcribeStatusMessage}</span>
@@ -869,7 +920,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                           rows={4}
                           value={manualDescription}
                           onChange={(e) => setManualDescription(e.target.value)}
-                          placeholder="Write a clear overview highlighting key features, payment terms, or neighborhood highlights... or tap 'Auto-Transcribe Voice Note' above!"
+                          placeholder={aiEnabled ? "Write a clear overview highlighting key features, payment terms, or neighborhood highlights... or tap 'Auto-Transcribe Voice Note' above!" : 'Write a clear overview highlighting key features, payment terms, or neighborhood highlights...'}
                           className="w-full bg-gray-50 border border-gray-300 rounded-2xl p-4 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-emerald-500 font-normal"
                       />
                       {manualDescription && (
@@ -891,7 +942,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                       <label className="p-4 border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl cursor-pointer flex flex-col items-center justify-center text-center transition-all bg-gray-50">
                           <ImageIcon size={24} className="text-gray-400 mb-1" />
                           <span className="text-xs font-bold text-gray-700">Add Photos</span>
-                          <input type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden" />
+                          <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif,image/gif" onChange={handleImageUpload} className="hidden" />
                       </label>
 
                       {uploadedImages.map((img, idx) => (
@@ -950,12 +1001,14 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
               </div>
 
               {/* Form Actions */}
+              {publishFeedback}
               <div className="pt-4 flex flex-col sm:flex-row gap-3">
                   <button
                       type="submit"
+                      disabled={isPublishing}
                       className="flex-1 py-4 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-2xl text-sm shadow-lg flex items-center justify-center gap-2 transition-all"
                   >
-                      <CheckSquare size={18} /> Save & Publish Manual Listing
+                      <CheckSquare size={18} /> {isPublishing ? 'Publishing…' : 'Save & Publish Manual Listing'}
                   </button>
                   <button
                       type="button"
@@ -1033,6 +1086,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                 </span>
                 <button 
                     onClick={async () => {
+                      if (!aiEnabled) return;
                       setStep('processing');
                       const result = await generateListingFromRawText(rawInput);
                       if (result) {
@@ -1069,7 +1123,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
         </div>
         </>
         )}
-      </div>
+      </fieldset>
     );
   }
 
@@ -1095,7 +1149,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
     const isResidential = category === 'RESIDENTIAL';
 
     return (
-      <div className="p-4 md:p-8 max-w-4xl mx-auto pb-24">
+      <fieldset disabled={isPublishing} aria-busy={isPublishing} className="min-w-0 w-full p-4 md:p-8 max-w-4xl mx-auto pb-40">
         <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900">Review & Publish</h2>
             <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
@@ -1311,7 +1365,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                         </div>
 
                         {/* Auto-Transcribe Voice Note Button */}
-                        <div>
+                        {aiEnabled && <div>
                             {!isRecordingDescription ? (
                                 <button
                                     type="button"
@@ -1333,10 +1387,10 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                                     <span>Stop Recording (0:{descriptionRecordingSeconds < 10 ? '0' : ''}{descriptionRecordingSeconds}s)</span>
                                 </button>
                             )}
-                        </div>
+                        </div>}
                     </div>
 
-                    {isTranscribingDescription && (
+                    {aiEnabled && isTranscribingDescription && (
                         <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 animate-pulse">
                             <Loader2 size={14} className="animate-spin text-emerald-600 shrink-0" />
                             <span>Ilé AI is transcribing your note...</span>
@@ -1384,15 +1438,16 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
             </div>
         </div>
 
-        <div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 p-4 md:px-8 flex justify-end gap-4 z-40">
+        <div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 p-4 md:px-8 flex flex-wrap justify-end gap-4 z-40">
+            {publishFeedback}
             <button onClick={() => setStep('input')} className="px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors">
                 Back to Edit
             </button>
-            <button onClick={handleFinalSubmit} className="px-8 py-3 rounded-xl font-bold bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95">
-                Publish Listing
+            <button onClick={handleFinalSubmit} disabled={isPublishing} className="px-8 py-3 rounded-xl font-bold bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 disabled:opacity-60">
+                {isPublishing ? 'Publishing…' : 'Publish Listing'}
             </button>
         </div>
-      </div>
+      </fieldset>
     );
   }
 

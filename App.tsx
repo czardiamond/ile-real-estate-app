@@ -15,6 +15,7 @@ import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'fi
 import { useToast } from './src/context/ToastContext';
 import { AboutView, GuideView } from './components/InfoPages';
 import SiteFooter from './components/SiteFooter';
+import { ListingSaveUnconfirmedError, publishListingWithMedia, RegisterCleanup } from './services/listingPublish';
 
 const ExploreView = lazy(() => import('./components/ExploreView'));
 const AgentDashboard = lazy(() => import('./components/AgentDashboard'));
@@ -334,28 +335,63 @@ const App: React.FC = () => {
   };
 
   const handleListingComplete = async (data: SmartListingResponse & { mediaFiles: { images: File[]; video?: File; floorPlan?: File } }) => {
-      if (!currentUser) {
+      if (!currentUser || !fbUser) {
         toast.error('Sign in required', 'Sign in before publishing a listing.');
-        return;
+        throw new Error('Sign in before publishing a listing. Your form has not been cleared.');
       }
-      const uploadedRefs: ReturnType<typeof storageRef>[] = [];
+      const deleteR2Photo = async (key: string): Promise<void> => {
+        const token = await fbUser.getIdToken();
+        const response = await fetch('/api/listing-photos', {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key }),
+        });
+        if (!response.ok) throw new Error('Could not clean up an uploaded R2 photo.');
+      };
       try {
-        const uploadFile = async (file: File, kind: string): Promise<string> => {
+        const uploadPhoto = async (file: File, registerCleanup: RegisterCleanup): Promise<string> => {
+          const token = await fbUser.getIdToken();
+          const response = await fetch('/api/listing-photos', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contentType: file.type, size: file.size }),
+          });
+          const result = await response.json().catch(() => null);
+          if (!response.ok) {
+            throw new Error(typeof result?.error === 'string' ? result.error : 'Cloudflare R2 could not prepare the photo upload.');
+          }
+          if (typeof result?.uploadUrl !== 'string' || typeof result?.publicUrl !== 'string' || typeof result?.key !== 'string') {
+            throw new Error('Cloudflare R2 returned an invalid photo-upload response.');
+          }
+
+          // Record the owner-scoped key before PUT so a partial/ambiguous upload can be cleaned up.
+          registerCleanup(() => deleteR2Photo(result.key));
+          const uploadResponse = await fetch(result.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type },
+            body: file,
+          });
+          if (!uploadResponse.ok) throw new Error('Cloudflare R2 could not store this photo. Please try again.');
+          return result.publicUrl;
+        };
+
+        const uploadFirebaseAsset = async (file: File, kind: string, registerCleanup: RegisterCleanup): Promise<string> => {
           const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
           const fileId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
           const fileRef = storageRef(storage, `listing-assets/${currentUser.id}/${kind}/${fileId}-${safeName}`);
-          uploadedRefs.push(fileRef);
+          registerCleanup(() => deleteObject(fileRef));
           const snapshot = await uploadBytes(fileRef, file, { contentType: file.type });
           return getDownloadURL(snapshot.ref);
         };
 
-        const imageUrls = await Promise.all(data.mediaFiles.images.map(file => uploadFile(file, 'images')));
-        const videoUrl = data.mediaFiles.video ? await uploadFile(data.mediaFiles.video, 'videos') : undefined;
-        const floorPlanUrl = data.mediaFiles.floorPlan ? await uploadFile(data.mediaFiles.floorPlan, 'floor-plans') : undefined;
+        // Property photos always use R2. There is intentionally no Firebase Storage fallback.
         const { mediaFiles: _mediaFiles, confidence_score: _confidenceScore, suggestedDocType: _suggestedDocType, ...listingData } = data;
         const listingType = listingData.type || 'Other';
 
-        const propId = await createProperty({
+        await publishListingWithMedia(data.mediaFiles, {
+          uploadPhoto,
+          uploadAsset: uploadFirebaseAsset,
+          save: ({ images, videoUrl, floorPlanUrl }) => createProperty({
           ...listingData,
           ownerId: currentUser.id,
           agentId: currentUser.id,
@@ -368,27 +404,22 @@ const App: React.FC = () => {
           status: 'Available',
           features: listingData.features || [],
           specs: listingData.specifications,
-          images: imageUrls,
+          images,
           videoUrl,
           floorPlanUrl,
           coordinates: listingData.coordinates,
+          }),
         });
-        setIsListingWizardOpen(false);
-        setActiveTab('explore');
-        toast.success('Listing published', `“${data.title}” is now available in the marketplace.`);
       } catch (err: any) {
-        const cleanupResults = await Promise.allSettled(uploadedRefs.map(fileRef => deleteObject(fileRef)));
-        const cleanupFailures = cleanupResults.filter(result => result.status === 'rejected').length;
         console.error('Listing publish failed:', err);
-        if (cleanupFailures > 0) {
-          console.error(`Failed to remove ${cleanupFailures} uploaded listing asset(s) after publish failure.`);
-        }
-        const failureMessage = err?.message || 'The upload or save failed. Check Firebase Storage/Firestore setup and try again.';
-        const cleanupWarning = cleanupFailures > 0
-          ? ` ${cleanupFailures} uploaded file(s) could not be removed and may need administrator cleanup.`
-          : '';
-        toast.error('Listing not published', `${failureMessage}${cleanupWarning}`);
+        const failureMessage = err?.message || 'The upload or save failed. Check Cloudflare R2 photo configuration and Firestore access, then try again.';
+        toast.error(err instanceof ListingSaveUnconfirmedError ? 'Publication not confirmed' : 'Listing not published', failureMessage);
+        throw err;
       }
+      // UI feedback must not trigger media rollback after Firestore has committed.
+      setIsListingWizardOpen(false);
+      setActiveTab('explore');
+      toast.success('Listing published', `“${data.title}” is now available in the marketplace.`);
   };
 
   // Compute Similar Properties

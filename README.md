@@ -7,7 +7,7 @@ Ilé is a real-estate marketplace for account-based listing management, public l
 - Firebase Authentication and user profiles
 - Anonymous listing browse through an allowlisted `public_listings` projection; exact addresses and owner-only fields remain in `properties`
 - Marketplace search and filters, list/map browsing, browser-local saved listings, and side-by-side comparison for up to three properties
-- Firebase Storage uploads for up to five listing photos, one floor plan and private title-review documents; listings support up to five approved feature labels
+- Cloudflare R2 uploads for up to five public listing photos when R2 is configured; optional floor plans and private title-review documents still use Firebase Storage. Property photos do not fall back to Firebase Storage.
 - Buyer enquiries routed to the listing owner’s Firestore inbox
 - AI-assisted listing drafts through the authenticated server endpoint
 - Internal Ilé document review, which is **not** a government registry search or legal opinion
@@ -36,14 +36,26 @@ npm run lint
 npm run build
 npm run preview
 npm run test:rules
+npm run test:listing-photos
+npm run test:listing-publish
 ```
+
+### Listing publishing reliability
+
+Both manual publishing and AI-draft review await the save result. The wizard blocks overlapping submissions and editing/cancellation while a publish is pending, warns before leaving the page, and keeps the entered details and selected files in memory after a failure. This is a same-wizard submission lock, not cross-device/server-side idempotency or saved drafts after a reload.
+
+`services/listingPublish.ts` waits for every started photo upload to settle before rolling back an upload failure. This prevents a slower upload from finishing after cleanup and leaving an orphan. Cleanup failures are surfaced to the agent. Once database saving starts, a rejected response is treated as an unconfirmed outcome: media is retained and the agent is told to check their listings before retrying. This conservative policy can leave orphaned media after a genuine save failure, but avoids deleting photos from a listing that actually committed. A trusted reconciliation/idempotency backend is still needed. Successful commits also cannot trigger media deletion because of subsequent UI feedback errors. R2 remains required for photos; optional video/floor-plan storage remains Firebase-backed.
+
+For a browser smoke test, run `npm run dev` and open `/tests/fixtures/listing-publish.html` on that local server. Fill the manual required fields, publish, and use **Simulate failure** to check that details remain and controls unlock. Retry and use **Simulate success**. The harness stubs the save callback and explicitly disables AI/voice entry paths with `aiEnabled={false}`: this manual-only flow makes no listing writes, media uploads or Gemini requests and is not a production entry point. It is not a network-isolated browser: Firebase client initialization and third-party map/icon resources may still make network requests. Unit tests cover repeated submissions, retry unlocking, upload order, late-upload cleanup, optional-asset failures, save rejection, and cleanup failure counts.
+
+Photo signing uses `requestChecksumCalculation: 'WHEN_REQUIRED'`: the server has no photo body while presigning, so it must not attach a synthetic empty-body CRC32. The URL explicitly signs both `content-type` and `content-length`; the browser must send the normalized allowed MIME type and exactly the declared bytes. Offline photo tests use dummy credentials to exercise the same production signing helper, assert no checksum query parameters, and independently recompute SigV4 to prove that changing the MIME type or length invalidates the signature. These tests do not upload to R2 or validate real image bytes; an authorized real browser/R2/CORS integration check is still required before release.
 
 The Firebase browser configuration is public client configuration, not an authorization secret. Keep its Firebase/Google API restrictions limited to the intended project and domains. Never put `GEMINI_API_KEY` in a `VITE_` variable or browser code.
 
 ## Firebase setup
 
 1. Create or select the Firebase project and configure the web app values in `.env.local` (`VITE_FIREBASE_*`). Authentication providers used by the sign-in screen must be enabled, and the deployed website domains must be authorized.
-2. Enable Firestore. Firebase Storage uploads are a separate project capability; this privacy change does not deploy Storage rules or configure billing.
+2. Enable Firestore. Firebase Storage is used for optional floor plans and private title-review documents; its rules and billing are separate. Property photos use Cloudflare R2 and have no Firebase Storage fallback.
 3. Before deploying the new client/rules, back up the target project and run the privacy migration in dry-run mode:
 
    ```bash
@@ -69,8 +81,13 @@ Configure these **server-side** Vercel environment variables for Preview and Pro
 
 - `FIREBASE_PROJECT_ID` — the Firebase project ID used to verify Firebase ID tokens
 - `GEMINI_API_KEY` — the provider key used only by the server-side AI module
+- `R2_ACCOUNT_ID`, `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` — the Cloudflare account, bucket, and bucket-scoped S3 API credentials used only by the authenticated photo-signing endpoint
+- `R2_JURISDICTION` — optional `default`, `eu`, `us`, or `fedramp`; defaults to `default` and must match the bucket's jurisdiction
+- `R2_PUBLIC_BASE_URL` — the HTTPS base URL that serves uploaded listing photos to anonymous marketplace visitors
 
 Configure the `VITE_FIREBASE_*` public web-app variables for the Vite build as well. Test a Preview deployment first: sign up, sign in, publish a listing with media, submit a buyer enquiry, check owner-only status changes, and confirm an unauthenticated `/api/ai` request returns `401`.
+
+Before photo uploads can work, the account owner must authorize any required R2 billing activation, then create/configure a dedicated bucket for listing photos and a bucket-scoped `Object Read & Write` API token. Choose and configure an HTTPS public image-delivery domain, then set the required `R2_*` variables above in Vercel. The bucket CORS policy must allow `PUT` from the app's exact origins with the `Content-Type` header; public image delivery must allow anonymous `GET` for published listing photos. R2 public domains expose objects in that bucket, so it must contain only photos intended for public listing display—not private title documents or other private files. These account, billing, bucket, public-access, credential and deployment changes are not performed by this code change. If R2 is unset, the authenticated API returns a clear `503` and listing photos are not sent to Firebase Storage.
 
 The AI endpoint currently uses an in-memory per-function-instance rate limit. Before significant public traffic, replace it with a shared/distributed limiter and add monitoring and abuse controls.
 
