@@ -8,10 +8,12 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
+    "test:map-actions": "node --test tests/map-card-actions.test.mjs",
     "test:rules": "npx --yes firebase-tools@15.33.0 emulators:exec --only firestore --project demo-ile-rules \"node --test tests/firestore.rules.test.mjs\"",
     "migrate:firestore-privacy": "node scripts/migrate-firestore-privacy.mjs",
     "test:listing-photos": "node --experimental-strip-types --test tests/listing-photos.test.mjs",
-    "test:listing-publish": "node --experimental-strip-types --test tests/listing-publish.test.mjs"
+    "test:listing-publish": "node --experimental-strip-types --test tests/listing-publish.test.mjs",
+    "test": "node --experimental-strip-types --test tests/listing-photos.test.mjs tests/listing-publish.test.mjs tests/maps.test.mjs tests/map-card-actions.test.mjs tests/photo-sanitizer.test.mjs tests/server-photo-sanitizer.test.mjs tests/wizard-photo-processing.test.mjs tests/public-listing-privacy.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1152.0",
@@ -27,7 +29,8 @@
     "react-dom": "^19.2.3",
     "react-leaflet": "5.0.0-rc.2",
     "react-markdown": "^9.1.0",
-    "recharts": "^3.6.0"
+    "recharts": "^3.6.0",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
@@ -37,10 +40,16 @@
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.6.1",
     "firebase-admin": "14.5.0",
+    "jsdom": "^26.1.0",
     "postcss": "^8.5.29",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
+  },
+  "overrides": {
+    "@firebase/firestore": {
+      "@grpc/grpc-js": "1.14.6"
+    }
   }
 }

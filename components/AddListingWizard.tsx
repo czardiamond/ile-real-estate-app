@@ -3,17 +3,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { SmartListingResponse } from '../types';
 import { generateListingFromRawText, processVoiceNoteToListing, transcribeAudioToDescription } from '../services/geminiService';
 import { Sparkles, ArrowRight, Mic, MicOff, CheckCircle, AlertCircle, Loader2, Image as ImageIcon, Trash2, Plus, X, Video, FileText, MapPin, AlertTriangle, Check, LayoutGrid, Coffee, Shield, Radio, Volume2, FileEdit, Building2, DollarSign, Sliders, CheckSquare, LayoutTemplate } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
+import ListingLocationPicker from './ListingLocationPicker';
 import { createSubmissionGate } from '../services/listingPublish';
-
-// Fix for default Leaflet icons
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+import { sanitizePropertyPhoto } from '../services/photoSanitizer';
 
 interface AddListingWizardProps {
   onCancel: () => void;
@@ -21,16 +13,6 @@ interface AddListingWizardProps {
   initialInput?: string;
   initialMode?: 'ai' | 'manual';
   aiEnabled?: boolean;
-}
-
-const LocationPicker = ({ position, setPosition }: { position?: {lat: number, lng: number} | null, setPosition: (pos: {lat: number, lng: number}) => void }) => {
-    const map = useMapEvents({
-        click(e) {
-            setPosition(e.latlng);
-            map.flyTo(e.latlng, map.getZoom());
-        }
-    });
-    return position ? <Marker position={position} /> : null
 }
 
 // Amenities List (General)
@@ -50,8 +32,6 @@ const ALLOWED_LISTING_FEATURES = new Set(Object.values(FEATURES_BY_TYPE).flat().
   'Backup Generator', 'Swimming Pool', '24/7 Security', 'Water Heater', 'Serviced', 'Prepaid Meter',
   'Solar Powered', 'Ample Parking',
 ]));
-const SUPPORTED_PROPERTY_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
-
 const PROPERTY_TYPES_BY_CATEGORY = {
     RESIDENTIAL: ['Apartment', 'House', 'Duplex', 'Bungalow', 'Short-let', 'Guest House', 'Other'],
     COMMERCIAL: ['Office Space', 'Shop / Plaza', 'Warehouse', 'Other'],
@@ -65,8 +45,12 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
   const submitOnce = useRef(createSubmissionGate());
+  const [isProcessingPhotos, setIsProcessingPhotos] = useState(false);
+  const photoProcessingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   const publishListing = async (data: Parameters<AddListingWizardProps['onComplete']>[0]) => {
+    if (photoProcessingRef.current) return;
     try {
       await submitOnce.current(async () => {
         setPublishError('');
@@ -94,6 +78,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
 
   const publishFeedback = (
     <div className="w-full" aria-live="polite">
+      {isProcessingPhotos && <p role="status" className="text-sm text-emerald-800">Preparing photos and removing embedded location metadata…</p>}
       {isPublishing && <p role="status" className="text-sm text-emerald-800 flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Uploading media and saving your listing. Keep this page open.</p>}
       {publishError && <p role="alert" className="text-sm text-red-700 rounded-xl bg-red-50 border border-red-200 p-3">{publishError} Your details and selected files are still here. Review the error before trying again.</p>}
     </div>
@@ -109,17 +94,27 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
   const [uploadedFloorPlanFile, setUploadedFloorPlanFile] = useState<File | null>(null);
   const previewUrlsRef = useRef<string[]>([]);
 
-  const handleFloorPlanUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFloorPlanUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
-    if (!(file.type.startsWith('image/') || file.type === 'image/svg+xml') || file.size > 15 * 1024 * 1024) {
-      alert('Choose an image floor plan under 15MB.');
-      return;
+    if (photoProcessingRef.current || isPublishing) { input.value = ''; return; }
+    photoProcessingRef.current = true;
+    setIsProcessingPhotos(true);
+    try {
+      const clean = await sanitizePropertyPhoto(file);
+      if (!mountedRef.current) return;
+      const preview = URL.createObjectURL(clean);
+      previewUrlsRef.current.push(preview);
+      setUploadedFloorPlan(preview);
+      setUploadedFloorPlanFile(clean);
+    } catch (error) {
+      if (mountedRef.current) alert(error instanceof Error ? error.message : 'Choose a valid JPEG, PNG, or WebP floor plan under 10MB.');
+    } finally {
+      input.value = '';
+      photoProcessingRef.current = false;
+      if (mountedRef.current) setIsProcessingPhotos(false);
     }
-    const preview = URL.createObjectURL(file);
-    previewUrlsRef.current.push(preview);
-    setUploadedFloorPlan(preview);
-    setUploadedFloorPlanFile(file);
   };
   
   // Manual Form State
@@ -166,7 +161,9 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
   const descriptionTimerRef = useRef<any>(null);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (timerRef.current) clearInterval(timerRef.current);
       if (descriptionTimerRef.current) clearInterval(descriptionTimerRef.current);
       previewUrlsRef.current.forEach(URL.revokeObjectURL);
@@ -335,20 +332,35 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const filesArray = Array.from(e.target.files || []);
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    if (photoProcessingRef.current || isPublishing) { input.value = ''; return; }
+    const filesArray = Array.from(input.files || []);
     if (filesArray.length === 0) return;
-    const remaining = Math.max(0, 5 - uploadedImageFiles.length);
-    const accepted = filesArray.filter(file => SUPPORTED_PROPERTY_PHOTO_TYPES.has(file.type.toLowerCase()) && file.size <= 10 * 1024 * 1024).slice(0, remaining);
-    if (accepted.length !== filesArray.length) alert('Select up to 5 JPEG, PNG, WebP, AVIF, or GIF photos, each under 10MB.');
-    const previews = accepted.map(file => {
-      const url = URL.createObjectURL(file);
-      previewUrlsRef.current.push(url);
-      return url;
-    });
-    setUploadedImageFiles(prev => [...prev, ...accepted]);
-    setUploadedImages(prev => [...prev, ...previews]);
-    e.target.value = '';
+    photoProcessingRef.current = true;
+    setIsProcessingPhotos(true);
+    try {
+      const candidates = filesArray.slice(0, Math.max(0, 5 - uploadedImageFiles.length));
+      const accepted: File[] = [];
+      // Decode sequentially: several high-resolution images must not allocate canvases together.
+      for (const file of candidates) {
+        try { accepted.push(await sanitizePropertyPhoto(file)); } catch { /* Never retain an unsafe original. */ }
+        if (!mountedRef.current) return;
+      }
+      if (!mountedRef.current) return;
+      if (accepted.length !== filesArray.length) alert('Select up to 5 valid JPEG, PNG, or WebP photos, each under 10MB. Processed photos must fit the upload limit; try a smaller image if needed. AVIF, HEIC and GIF are not accepted.');
+      const previews = accepted.map(file => {
+        const url = URL.createObjectURL(file);
+        previewUrlsRef.current.push(url);
+        return url;
+      });
+      setUploadedImageFiles(prev => [...prev, ...accepted]);
+      setUploadedImages(prev => [...prev, ...previews]);
+    } finally {
+      input.value = '';
+      photoProcessingRef.current = false;
+      if (mountedRef.current) setIsProcessingPhotos(false);
+    }
   };
 
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -475,7 +487,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
   // Step 1: Input Screen
   if (step === 'input') {
     return (
-      <fieldset disabled={isPublishing} aria-busy={isPublishing} className="min-w-0 w-full p-4 md:p-8 max-w-3xl mx-auto space-y-6">
+      <fieldset disabled={isPublishing || isProcessingPhotos} aria-busy={isPublishing || isProcessingPhotos} className="min-w-0 w-full p-4 md:p-8 max-w-3xl mx-auto space-y-6">
         <div>
             <button onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-900 mb-4">← Back to Veranda</button>
             <div className="flex items-center justify-between">
@@ -723,6 +735,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                           className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                       />
                   </div>
+                  <ListingLocationPicker position={coordinates} onChange={setCoordinates} />
               </div>
 
               {/* Specifications */}
@@ -942,7 +955,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                       <label className="p-4 border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl cursor-pointer flex flex-col items-center justify-center text-center transition-all bg-gray-50">
                           <ImageIcon size={24} className="text-gray-400 mb-1" />
                           <span className="text-xs font-bold text-gray-700">Add Photos</span>
-                          <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif,image/gif" onChange={handleImageUpload} className="hidden" />
+                          <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={handleImageUpload} className="hidden" />
                       </label>
 
                       {uploadedImages.map((img, idx) => (
@@ -964,14 +977,14 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
               <div className="border-t border-gray-100 pt-5 space-y-3">
                   <div className="flex items-center justify-between">
                       <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Architectural Floor Plan (SVG / Image)
+                          Architectural Floor Plan (Image)
                       </label>
                       <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                           3D Staging Ready
                       </span>
                   </div>
                   <p className="text-xs text-gray-500">
-                      Upload an architectural floor plan drawing or 2D layout (SVG, PNG, JPG). Buyers and 3D Virtual Staging engines use this to map room proportions.
+                      Upload a JPEG, PNG, or WebP floor plan under 10MB. Images are reprocessed to remove embedded metadata before publication; SVG and CAD files are not accepted.
                   </p>
 
                   <div className="flex items-center gap-4">
@@ -980,7 +993,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                               <img src={uploadedFloorPlan} alt="Floor Plan" className="w-full h-full object-contain" />
                               <button
                                   type="button"
-                                  onClick={() => setUploadedFloorPlan(null)}
+                                  onClick={() => { setUploadedFloorPlan(null); setUploadedFloorPlanFile(null); }}
                                   className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-red-600 text-white rounded-full transition-colors"
                                   title="Remove floor plan"
                               >
@@ -992,9 +1005,9 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                               <LayoutTemplate size={24} className="text-emerald-700" />
                               <div className="text-left">
                                   <span className="text-xs font-bold text-gray-800 block">Upload Architectural Floor Plan</span>
-                                  <span className="text-[10px] text-gray-500">Supports SVG, PNG, JPG, or CAD export</span>
+                                  <span className="text-[10px] text-gray-500">JPEG, PNG or WebP · metadata removed</span>
                               </div>
-                              <input type="file" accept="image/*,.svg" onChange={handleFloorPlanUpload} className="hidden" />
+                              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFloorPlanUpload} className="hidden" />
                           </label>
                       )}
                   </div>
@@ -1149,7 +1162,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
     const isResidential = category === 'RESIDENTIAL';
 
     return (
-      <fieldset disabled={isPublishing} aria-busy={isPublishing} className="min-w-0 w-full p-4 md:p-8 max-w-4xl mx-auto pb-40">
+      <fieldset disabled={isPublishing || isProcessingPhotos} aria-busy={isPublishing || isProcessingPhotos} className="min-w-0 w-full p-4 md:p-8 max-w-4xl mx-auto pb-40">
         <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900">Review & Publish</h2>
             <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
@@ -1186,7 +1199,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                                 <span className="text-[10px] font-bold mt-1">Add Photo</span>
                                 <input 
                                     type="file" 
-                                    accept="image/*" 
+                                    accept="image/jpeg,image/png,image/webp"
                                     multiple 
                                     className="hidden" 
                                     onChange={handleImageUpload} 
@@ -1424,12 +1437,7 @@ const AddListingWizard: React.FC<AddListingWizardProps> = ({ onCancel, onComplet
                             Choose a pin to save coordinates
                         </span>
                     </div>
-                    <div className="h-64 w-full rounded-xl overflow-hidden border border-gray-200 relative z-0">
-                        <MapContainer center={coordinates || [9.082, 8.675]} zoom={6} style={{ height: '100%', width: '100%' }}>
-                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                            <LocationPicker position={coordinates} setPosition={setCoordinates} />
-                        </MapContainer>
-                    </div>
+                    <ListingLocationPicker position={coordinates} onChange={setCoordinates} />
                 </div>
 
                 <div className="bg-white p-6 rounded-xl border border-gray-200 text-sm text-gray-600">

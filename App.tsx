@@ -16,6 +16,7 @@ import { useToast } from './src/context/ToastContext';
 import { AboutView, GuideView } from './components/InfoPages';
 import SiteFooter from './components/SiteFooter';
 import { ListingSaveUnconfirmedError, publishListingWithMedia, RegisterCleanup } from './services/listingPublish';
+import { sanitizePropertyPhoto } from './services/photoSanitizer';
 
 const ExploreView = lazy(() => import('./components/ExploreView'));
 const AgentDashboard = lazy(() => import('./components/AgentDashboard'));
@@ -350,28 +351,34 @@ const App: React.FC = () => {
       };
       try {
         const uploadPhoto = async (file: File, registerCleanup: RegisterCleanup): Promise<string> => {
+          const sanitizedFile = await sanitizePropertyPhoto(file);
           const token = await fbUser.getIdToken();
+          const data = await sanitizedFile.arrayBuffer();
+          let base64 = '';
+          try {
+            const bytes = new Uint8Array(data);
+            let binary = '';
+            const chunkSize = 0x8000;
+            for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+              binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
+            }
+            base64 = btoa(binary);
+          } catch {
+            throw new Error('The processed photo could not be prepared for secure upload.');
+          }
           const response = await fetch('/api/listing-photos', {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contentType: file.type, size: file.size }),
+            body: JSON.stringify({ data: base64 }),
           });
           const result = await response.json().catch(() => null);
           if (!response.ok) {
-            throw new Error(typeof result?.error === 'string' ? result.error : 'Cloudflare R2 could not prepare the photo upload.');
+            throw new Error(typeof result?.error === 'string' ? result.error : 'Cloudflare R2 could not store this photo.');
           }
-          if (typeof result?.uploadUrl !== 'string' || typeof result?.publicUrl !== 'string' || typeof result?.key !== 'string') {
+          if (typeof result?.publicUrl !== 'string' || typeof result?.key !== 'string' || typeof result?.uploadUrl === 'string') {
             throw new Error('Cloudflare R2 returned an invalid photo-upload response.');
           }
-
-          // Record the owner-scoped key before PUT so a partial/ambiguous upload can be cleaned up.
           registerCleanup(() => deleteR2Photo(result.key));
-          const uploadResponse = await fetch(result.uploadUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': file.type },
-            body: file,
-          });
-          if (!uploadResponse.ok) throw new Error('Cloudflare R2 could not store this photo. Please try again.');
           return result.publicUrl;
         };
 
@@ -390,7 +397,9 @@ const App: React.FC = () => {
 
         await publishListingWithMedia(data.mediaFiles, {
           uploadPhoto,
-          uploadAsset: uploadFirebaseAsset,
+          uploadAsset: (file, kind, registerCleanup) => kind === 'floor-plans'
+            ? uploadPhoto(file, registerCleanup)
+            : uploadFirebaseAsset(file, kind, registerCleanup),
           save: ({ images, videoUrl, floorPlanUrl }) => createProperty({
           ...listingData,
           ownerId: currentUser.id,

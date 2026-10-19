@@ -46,3 +46,10 @@
     font-family: 'Cormorant Garamond', Georgia, serif;
   }
 }
+
+/* Leaflet panes must stay inside the map, below app dialogs and navigation. */
+.leaflet-container {
+  isolation: isolate;
+  z-index: 0;
+  font-family: inherit;
+}

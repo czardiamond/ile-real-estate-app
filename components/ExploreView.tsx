@@ -4,23 +4,11 @@ import PropertyCard from './PropertyCard';
 import CompareModal from './CompareModal';
 import { Property, PropertyType, FloodRisk } from '../types';
 import { Search, Filter, Home, GlassWater, PartyPopper, Briefcase, Map as MapIcon, X, Car, Zap, Check, ChevronDown, Waves, List, Bed, Bath, Armchair, Sparkles, Scale, Locate, ArrowUpDown, Calendar, DollarSign, Flame } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, useMap, ZoomControl } from 'react-leaflet';
 import L from 'leaflet';
-
-// Fix for default Leaflet icons in React
-const iconRetinaUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png';
-const iconUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png';
-const shadowUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png';
-
-L.Marker.prototype.options.icon = L.icon({
-    iconUrl,
-    iconRetinaUrl,
-    shadowUrl,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41]
-});
+import { DEFAULT_MAP_CENTER, isValidCoordinates, OSM_ATTRIBUTION, OSM_TILE_URL } from '../services/mapUtils';
+import MapSupport from './MapSupport';
+import AccessiblePriceMarker from './AccessiblePriceMarker';
 
 interface ExploreViewProps {
   properties?: Property[];
@@ -39,14 +27,18 @@ const MapUpdater: React.FC<{ properties: Property[] }> = ({ properties }) => {
     useEffect(() => {
         if (properties.length > 0) {
             const latLngs = properties
-                .filter(p => p.coordinates)
+                .filter(p => isValidCoordinates(p.coordinates))
                 .map(p => [p.coordinates!.lat, p.coordinates!.lng] as [number, number]);
 
             if (latLngs.length > 0) {
                 const bounds = L.latLngBounds(latLngs);
                 // Add padding to bounds
-                map.flyToBounds(bounds, { padding: [50, 50], duration: 1.5 });
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+            } else {
+                map.setView(DEFAULT_MAP_CENTER, 6);
             }
+        } else {
+            map.setView(DEFAULT_MAP_CENTER, 6);
         }
     }, [properties, map]);
 
@@ -56,29 +48,45 @@ const MapUpdater: React.FC<{ properties: Property[] }> = ({ properties }) => {
 // Component to handle "Locate Me" functionality
 const LocateControl = () => {
     const map = useMap();
+    const [message, setMessage] = useState('');
+    const [locating, setLocating] = useState(false);
     const handleLocate = (e: React.MouseEvent) => {
         e.stopPropagation();
         e.preventDefault();
+        if (!navigator.geolocation) {
+            setMessage('Location is not supported in this browser. Search by area or city instead.');
+            return;
+        }
+        setMessage('');
+        setLocating(true);
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 const { latitude, longitude } = position.coords;
-                map.flyTo([latitude, longitude], 15, { duration: 2 });
+                setLocating(false);
+                if (isValidCoordinates({ lat: latitude, lng: longitude })) map.setView([latitude, longitude], 15);
             },
             (error) => {
-                console.error("Location error", error);
-                alert("Could not access location. Please enable permissions to find properties near you.");
-            }
+                setLocating(false);
+                setMessage(error.code === 1 ? 'Location permission was denied. Allow location in your browser or search by area or city.' : 'Your location is unavailable. Search by area or city, or try again.');
+            },
+            { timeout: 10000, maximumAge: 60000 }
         );
     };
 
     return (
+      <>
         <button
+            type="button"
             onClick={handleLocate}
+            disabled={locating}
             className="absolute top-4 right-4 z-[400] bg-white p-3 rounded-full shadow-lg border border-gray-100 text-gray-700 hover:bg-gray-50 hover:text-primary transition-all"
-            title="Locate Me"
+            title={locating ? 'Finding your location' : 'Locate Me'}
+            aria-label={locating ? 'Finding your location' : 'Locate Me'}
         >
             <Locate size={20} />
         </button>
+        {message && <p role="status" className="absolute top-20 right-4 left-4 z-[400] rounded-lg bg-white p-3 text-sm text-gray-800 shadow-lg">{message}</p>}
+      </>
     );
 };
 
@@ -142,9 +150,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
   const filteredProperties = useMemo(() => {
     let result = sourceProperties.filter(p => {
       // 1. Search Term
-      const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            p.location.area.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            p.location.city.toLowerCase().includes(searchTerm.toLowerCase());
+      const query = searchTerm.trim().toLowerCase();
+      const matchesSearch = [p.title, p.location.area, p.location.city, p.location.state, p.type]
+        .some(value => value?.toLowerCase().includes(query));
 
       // 2. Category
       let matchesCategory = true;
@@ -234,9 +242,16 @@ const ExploreView: React.FC<ExploreViewProps> = ({
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
-  }, [searchTerm, activeCategory, priceRange, minCapacity, minParking, reqGenerator, filterFloodRisk, minBedrooms, minBathrooms, reqFurnished, reqServiced, filterPropertyTypes, sortOption]);
+  }, [sourceProperties, searchTerm, activeCategory, priceRange, minCapacity, minParking, reqGenerator, filterFloodRisk, minBedrooms, minBathrooms, reqFurnished, reqServiced, filterPropertyTypes, sortOption]);
+
+  const mappedProperties = useMemo(() => filteredProperties.filter(p => isValidCoordinates(p.coordinates)), [filteredProperties]);
+  useEffect(() => {
+    setSelectedMapPin(current => current ? mappedProperties.find(p => p.id === current.id) || null : null);
+  }, [mappedProperties]);
 
   const resetFilters = () => {
+      setSearchTerm('');
+      setActiveCategory('All');
       setPriceRange([0, 1000000000]);
       setMinCapacity(0);
       setMinParking(0);
@@ -290,17 +305,19 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       return `₦${val}`;
   };
 
-  const isFilterActive = minCapacity > 0 || minParking > 0 || reqGenerator || filterFloodRisk || minBedrooms > 0 || minBathrooms > 0 || reqFurnished || reqServiced || filterPropertyTypes.length > 0;
+  const isFilterActive = priceRange[0] > 0 || priceRange[1] < 1000000000 || minCapacity > 0 || minParking > 0 || reqGenerator || filterFloodRisk || minBedrooms > 0 || minBathrooms > 0 || reqFurnished || reqServiced || filterPropertyTypes.length > 0;
 
   // Helper to create custom DivIcons for price pins
   const createPriceIcon = (property: Property, isSelected: boolean) => {
     const isCompared = compareList.some(cp => cp.id === property.id);
     const bgColor = isSelected ? '#166534' : isCompared ? '#111827' : '#ffffff';
     const textColor = isSelected || isCompared ? '#ffffff' : '#166534';
-    const priceText = formatCurrency(property.price);
-
-    const html = `
-      <div style="
+    const priceText = formatCurrency(Number.isFinite(property.price) ? property.price : 0);
+    const html = document.createElement('div');
+    html.setAttribute('role', 'img');
+    html.setAttribute('aria-label', `${property.title}, ${priceText}`);
+    html.textContent = priceText;
+    html.style.cssText = `
         background-color: ${bgColor};
         color: ${textColor};
         padding: 4px 8px;
@@ -310,11 +327,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
         box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         white-space: nowrap;
         border: 1px solid ${isSelected ? '#ffffff' : '#166534'};
-        transform: translate(-50%, -50%);
         transition: all 0.2s ease;
-      ">
-        ${priceText}
-      </div>
     `;
 
     return L.divIcon({
@@ -546,46 +559,51 @@ const ExploreView: React.FC<ExploreViewProps> = ({
             /* REAL MAP VIEW */
             <div className="relative w-full h-[60vh] md:h-[calc(100vh-240px)] rounded-[32px] overflow-hidden border border-outline-variant/20 shadow-xl">
                 <MapContainer
-                    center={[9.082, 8.675]} // Nigeria-wide initial view; only listing coordinates receive markers.
+                    center={DEFAULT_MAP_CENTER}
                     zoom={6}
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={false}
                 >
                     <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                        attribution={OSM_ATTRIBUTION}
+                        url={OSM_TILE_URL}
+                        maxZoom={19}
                     />
+                    <MapSupport />
+                    <ZoomControl position="topleft" />
 
                     {/* Auto-Zoom to Pins */}
-                    <MapUpdater properties={filteredProperties} />
+                    <MapUpdater properties={mappedProperties} />
 
                     {/* Map attribution and listing-only context */}
                     <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[400] w-full max-w-2xl px-4">
-                        <div className="rounded-xl border border-outline bg-white px-4 py-3 text-center text-xs leading-5 text-on-surface shadow-md">
-                          Exact seller-pinned coordinates are not included in public listings. Privacy-safe approximate map locations are not connected yet; switch to list view to browse available properties.
+                        <div role="status" className="rounded-xl border border-outline bg-white px-4 py-3 text-center text-xs leading-5 text-on-surface shadow-md">
+                          {filteredProperties.length === 0 ? 'No properties match this search.' : `${mappedProperties.length} of ${filteredProperties.length} matching properties have map locations.`}
+                          {mappedProperties.length < filteredProperties.length && ' Exact seller coordinates stay private; properties without a public map location remain in the list.'}
+                          {mappedProperties.length === 0 && <button type="button" onClick={() => setViewMode('list')} className="ml-2 font-bold underline">Browse list</button>}
                         </div>
                     </div>
 
             <LocateControl />
 
                     {/* Property Pins */}
-                    {filteredProperties.filter(p => p.coordinates).map(p => {
+                    {mappedProperties.map(p => {
                          if (!p.coordinates) return null;
                          const isSelected = selectedMapPin?.id === p.id;
 
                          return (
-                            <Marker
+                            <AccessiblePriceMarker
                                 key={p.id}
                                 position={[p.coordinates.lat, p.coordinates.lng]}
+                                title={p.title}
+                                selected={isCompareMode ? compareList.some(property => property.id === p.id) : isSelected}
                                 icon={createPriceIcon(p, isSelected)}
-                                eventHandlers={{
-                                    click: () => {
+                                onActivate={() => {
                                         if (isCompareMode) {
                                             toggleCompare(p);
                                         } else {
                                             setSelectedMapPin(p);
                                         }
-                                    },
                                 }}
                             />
                          )
@@ -602,6 +620,8 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                             className="relative animate-in slide-in-from-bottom fade-in duration-300"
                         >
                             <button
+                                type="button"
+                                aria-label="Close selected map property"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedMapPin(null);
@@ -621,6 +641,8 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                     isSelectable={isCompareMode}
                                     isSelected={compareList.some(p => p.id === selectedMapPin.id)}
                                     isCompared={compareList.some(p => p.id === selectedMapPin.id)}
+                                    isSaved={savedPropertyIds?.has(selectedMapPin.id)}
+                                    onToggleSave={onToggleSave ? () => onToggleSave(selectedMapPin.id) : undefined}
                                     compact={true}
                                 />
                             </div>

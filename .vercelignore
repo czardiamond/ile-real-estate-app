@@ -1,0 +1,14 @@
+.git
+.env*
+!.env.example
+node_modules
+dist
+firestore-debug.log
+*.log
+tests
+docs
+migrated_prompt_history
+TEST_CASES_20_PLUS.csv
+TEST_CASES_MATRIX.md
+TEST_STRATEGY_AND_PLAN.md
+BUG_REPORTS_JIRA.md

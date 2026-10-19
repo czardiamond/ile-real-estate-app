@@ -153,6 +153,28 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
           )}
         </div>
 
+        {compact && (onToggleSave || onChat) && (
+          <div role="group" aria-label={`Actions for ${property.title}`} className="mt-3 flex flex-wrap gap-2 border-t border-outline-variant pt-3">
+            {onToggleSave && (
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); onToggleSave(); }}
+                aria-label={isSaved ? `Remove ${property.title} from saved properties` : `Save ${property.title}`}
+                aria-pressed={isSaved}
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-outline px-3 text-xs font-semibold text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              ><Heart size={16} fill={isSaved ? 'currentColor' : 'none'} aria-hidden="true" />{isSaved ? 'Saved' : 'Save'}</button>
+            )}
+            {onChat && (
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); onChat(property); }}
+                aria-label={`Enquire about ${property.title}`}
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#213b31] px-3 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              ><MessageCircle size={16} aria-hidden="true" />Enquire</button>
+            )}
+          </div>
+        )}
+
         {!compact && !isSelectable && (
           <div className="mt-auto flex items-center justify-between gap-3 border-t border-outline-variant pt-4">
             <div className="flex min-w-0 items-center gap-2 text-xs text-on-surface-variant">
