@@ -1,14 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { MOCK_LEADS, MOCK_PROPERTIES, MOCK_REVIEWS } from '../services/mockData';
-import { Lead, LeadStatus, User, VerificationStatus, Property, ListingStatus, Review } from '../types';
+import { Lead, LeadStatus, User, Property, ListingStatus, Review } from '../types';
 import { BarChart, Bar, LineChart, Line, CartesianGrid, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Phone, MessageCircle, MoreVertical, BrainCircuit, Coffee, Sun, ShieldAlert, ArrowRight, ShieldCheck, Home, Edit, Archive, MapPin, CheckCircle, AlertTriangle, Loader2, Sparkles, TrendingUp, Star, StarHalf, MessageSquare, Users, Plus, ChevronDown, Bell, Zap, X, BadgeCheck, Share2, FileEdit, Video } from 'lucide-react';
 import { analyzeLeadPotential, generateMarketingTip } from '../services/geminiService';
-import { getUserProperties } from '../src/services/propertyService';
+import { getUserProperties, updateListingStatus } from '../src/services/propertyService';
+import { subscribeAgentLeads, updateAgentLeadStatus } from '../services/firebase';
 import MarketingKitModal from './MarketingKitModal';
 import { BuyerIntentModal } from './BuyerIntentModal';
-import { sendEmailNotification } from '../services/notificationService';
 
 interface AgentDashboardProps {
     user: User;
@@ -48,22 +47,7 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
     type: 'CALL' | 'WHATSAPP';
     timestamp: string;
     details: string;
-  }>>([
-    {
-      id: 'init-1',
-      leadName: 'Chief Emeka Okafor',
-      type: 'CALL',
-      timestamp: '10:15 AM',
-      details: 'Followed up on Lekki Phase 1 duplex inspection inquiry'
-    },
-    {
-      id: 'init-2',
-      leadName: 'Amina Bello',
-      type: 'WHATSAPP',
-      timestamp: '08:45 AM',
-      details: 'Shared video tour link for Victoria Island penthouse'
-    }
-  ]);
+  }>>([]);
   const [activityToast, setActivityToast] = useState<string | null>(null);
 
   const handleCallLead = (lead: Lead) => {
@@ -92,12 +76,12 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
     setActivities(prev => [newAct, ...prev]);
     setActivityToast(`Logged WhatsApp activity for ${lead.name}`);
     setTimeout(() => setActivityToast(null), 3500);
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(`Hello ${lead.name}, I am following up on your property inquiry on Gemini real estate platform.`)}`, '_blank');
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(`Hello ${lead.name}, I am following up on your property inquiry on Ilé real estate marketplace.`)}`, '_blank');
   };
 
   const handleExportReport = () => {
     const csvRows = [
-      ['=== GEMINI REAL ESTATE - AGENT PERFORMANCE REPORT ==='],
+      ['=== ILÉ REAL ESTATE - AGENT REPORT ==='],
       ['Agent Name', user.name],
       ['Agency Name', user.agencyName || 'Independent Agent'],
       ['Report Date', new Date().toLocaleString()],
@@ -139,71 +123,50 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Gemini_Agent_Report_${user.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute('download', `Ile_Agent_Report_${user.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   useEffect(() => {
-      // Load Properties (Firestore + seed listings)
-      const agentProperties = MOCK_PROPERTIES.filter(p => p.agentId === user.id);
-      
+      let active = true;
       getUserProperties(user.id)
-        .then(firestoreProps => {
-          if (firestoreProps && firestoreProps.length > 0) {
-            const combined = [...firestoreProps, ...agentProperties.filter(ap => !firestoreProps.some(fp => fp.id === ap.id))];
-            setMyListings(combined);
-          } else {
-            setMyListings(agentProperties.length > 0 ? agentProperties : MOCK_PROPERTIES.slice(0, 4));
-          }
-        })
+        .then(properties => { if (active) setMyListings(properties); })
         .catch(err => {
-          console.warn("Could not fetch user properties from Firestore:", err);
-          setMyListings(agentProperties.length > 0 ? agentProperties : MOCK_PROPERTIES.slice(0, 4));
+          console.warn('Could not fetch user properties from Firestore:', err);
+          if (active) setMyListings([]);
         });
-      
-      // Load Leads
-      const agentPropertyIds = new Set(agentProperties.map(p => p.id));
-      const agentLeads = MOCK_LEADS.filter(l => agentPropertyIds.has(l.propertyId));
-      setLeads(agentLeads.length > 0 ? agentLeads : MOCK_LEADS);
-
-      // Load Reviews
-      const reviews = MOCK_REVIEWS.filter(r => r.agentId === user.id);
-      setMyReviews(reviews.length > 0 ? reviews : MOCK_REVIEWS);
+      const unsubscribeLeads = subscribeAgentLeads(user.id, setLeads, err => {
+        console.warn('Could not subscribe to agent enquiries:', err);
+        if (active) setLeads([]);
+      });
+      // Reviews are not connected to a verified review provider yet.
+      setMyReviews([]);
+      return () => { active = false; unsubscribeLeads(); };
   }, [user.id]);
 
   const handleStatusUpdate = async (leadId: string, newStatus: LeadStatus) => {
-    const lead = leads.find(l => l.id === leadId);
-    setLeads(prev => prev.map(l => l.id === leadId ? {...l, status: newStatus} : l));
-    
-    // Send Notification
-    if (lead) {
-        await sendEmailNotification(
-            lead.email,
-            `Update on your property interest`,
-            `Hello ${lead.name}, your status has been updated to ${newStatus}. An agent will be in touch shortly.`
-        );
+    try {
+      await updateAgentLeadStatus(leadId, newStatus);
+      setLeads(prev => prev.map(l => l.id === leadId ? {...l, status: newStatus} : l));
+    } catch (error: any) {
+      alert(error?.message || 'Could not update this enquiry.');
     }
   };
 
   const handlePropertyStatusChange = async (propertyId: string, newStatus: ListingStatus) => {
-      const property = myListings.find(p => p.id === propertyId);
-      setMyListings(prev => prev.map(p => p.id === propertyId ? {...p, status: newStatus} : p));
-
-      // Send Notification to Agent (Confirmation)
-      if (property) {
-          await sendEmailNotification(
-              user.email,
-              `Listing Status Changed: ${property.title}`,
-              `You have successfully updated the status of "${property.title}" to ${newStatus}.`
-          );
+      try {
+        await updateListingStatus(propertyId, newStatus);
+        setMyListings(prev => prev.map(p => p.id === propertyId ? {...p, status: newStatus} : p));
+      } catch (error: any) {
+        alert(error?.message || 'Could not update this listing.');
       }
   };
 
   const handleAnalyzeLead = async (leadId: string, notes: string, propId: string) => {
       setLoadingAnalysis(leadId);
-      const prop = MOCK_PROPERTIES.find(p => p.id === propId);
+      const prop = myListings.find(p => p.id === propId);
       if(prop) {
           const resultStr = await analyzeLeadPotential(notes, prop.price);
           try {
@@ -217,9 +180,14 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
       setLoadingAnalysis(null);
   }
 
-  const handleArchiveListing = (id: string) => {
-      if(window.confirm('Are you sure you want to archive this listing?')) {
-          setMyListings(prev => prev.filter(p => p.id !== id));
+  const handleArchiveListing = async (id: string) => {
+      if(window.confirm('Mark this listing as taken? This changes its public marketplace status.')) {
+          try {
+            await updateListingStatus(id, ListingStatus.TAKEN);
+            setMyListings(prev => prev.map(p => p.id === id ? { ...p, status: ListingStatus.TAKEN } : p));
+          } catch (error: any) {
+            alert(error?.message || 'Could not update this listing.');
+          }
       }
   };
 
@@ -246,22 +214,8 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
     { name: 'Deal', count: leads.filter(l => l.status === LeadStatus.OFFER_MADE).length },
   ];
 
-  const conversionData = [
-    { month: 'May', agent: 5, average: 8 },
-    { month: 'Jun', agent: 12, average: 9 },
-    { month: 'Jul', agent: 18, average: 10 },
-    { month: 'Aug', agent: 15, average: 11 },
-    { month: 'Sep', agent: 22, average: 12 },
-    { month: 'Oct', agent: 28, average: 14 },
-  ];
-
   const today = new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long' });
   
-  // Verification Helper Variables
-  const verificationStatus = user.verification.status;
-  const isVerified = verificationStatus === VerificationStatus.VERIFIED;
-  const isPending = verificationStatus === VerificationStatus.PENDING;
-
   // Calculate Ratings
   const averageRating = myReviews.length > 0 
     ? (myReviews.reduce((acc, r) => acc + r.rating, 0) / myReviews.length).toFixed(1)
@@ -288,17 +242,17 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                 <div className="space-y-4">
                     <div className="flex justify-between items-center px-2 mt-6">
                         <h3 className="font-normal text-xl text-on-surface">Active Portfolio Leads</h3>
-                        <button className="text-sm text-primary font-bold bg-primary-container text-on-primary-container px-4 py-2 rounded-full hover:shadow-sm transition-all">+ Invite Client</button>
+                        <span className="text-xs text-on-surface-variant">Enquiries arrive when buyers contact one of your listings.</span>
                     </div>
                     
                     {leads.length === 0 ? (
                         <div className="text-center py-16 bg-surface-container-low rounded-[28px]">
-                             <p className="text-on-surface-variant">No active guests yet.</p>
+                             <p className="text-on-surface-variant">No enquiries yet. Buyer messages will appear here after they are submitted from a listing.</p>
                         </div>
                     ) : (
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {leads.map(lead => {
-                            const property = MOCK_PROPERTIES.find(p => p.id === lead.propertyId);
+                            const property = myListings.find(p => p.id === lead.propertyId);
                             const analysis = aiAnalysis[lead.id];
                             
                             return (
@@ -408,7 +362,7 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                                 <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
                                     <Bell size={16} />
                                 </div>
-                                <h4 className="font-bold text-base text-on-surface">Lead Communication Activity Log</h4>
+                                <h4 className="font-bold text-base text-on-surface">Recent actions on this device</h4>
                             </div>
                             <span className="text-xs text-on-surface-variant font-medium bg-surface-container px-3 py-1 rounded-full">
                                 {activities.length} Events Logged
@@ -416,6 +370,7 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                         </div>
 
                         <div className="space-y-3">
+                            {activities.length === 0 && <p className="text-sm text-on-surface-variant">No local call or WhatsApp actions recorded in this session.</p>}
                             {activities.map((act) => (
                                 <div key={act.id} className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-gray-100 shadow-sm text-xs">
                                     <div className="flex items-center gap-3">
@@ -466,32 +421,9 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                         </div>
                     </div>
 
-                    {/* Conversion Rate Comparison Chart */}
-                    <div className="bg-surface-container-low p-6 rounded-[32px]">
-                        <div className="flex justify-between items-center mb-6">
-                            <div>
-                                <h3 className="font-medium text-xl text-on-surface">Conversion Trends</h3>
-                                <p className="text-sm text-on-surface-variant">Your performance vs Market Average</p>
-                            </div>
-                            <div className="p-2 bg-surface-container rounded-full">
-                                <TrendingUp size={20} className="text-on-surface-variant"/>
-                            </div>
-                        </div>
-                        <div className="h-64 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={conversionData}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e5e0" />
-                                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#404943'}} dy={10} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#404943'}} unit="%" />
-                                    <Tooltip 
-                                        contentStyle={{ borderRadius: '16px', border: 'none', background: '#e2e5e0', color: '#191c1a' }}
-                                    />
-                                    <Legend iconType="circle" />
-                                    <Line type="monotone" dataKey="agent" name="You" stroke="#166534" strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
-                                    <Line type="monotone" dataKey="average" name="Market Avg" stroke="#ca8a04" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </div>
+                    <div className="bg-surface-container-low p-6 rounded-[32px] border border-outline-variant/20">
+                        <h3 className="font-medium text-xl text-on-surface">Conversion reporting</h3>
+                        <p className="text-sm text-on-surface-variant mt-2">No market benchmark or verified deal-closing data is connected yet. The pipeline chart above counts real enquiries currently in your account.</p>
                     </div>
                 </div>
               );
@@ -613,7 +545,7 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                     {myReviews.length === 0 ? (
                         <div className="text-center py-16 bg-surface-container-low rounded-[28px]">
                              <MessageSquare size={32} className="mx-auto mb-3 text-on-surface-variant/50" />
-                             <p className="text-on-surface-variant">No reviews yet. Keep closing deals!</p>
+                             <p className="text-on-surface-variant">No reviews are connected to this account yet.</p>
                         </div>
                     ) : (
                         <div className="grid md:grid-cols-2 gap-4">
@@ -662,19 +594,6 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
                         <h1 className="text-3xl font-normal text-on-surface">Hello, {user.name.split(' ')[0]}</h1>
-                        {verificationStatus === VerificationStatus.VERIFIED && (
-                            <BadgeCheck size={28} className="text-green-600" fill="#dcfce7" />
-                        )}
-                         {verificationStatus === VerificationStatus.PENDING && (
-                            <div className="bg-yellow-100 rounded-full p-1" title="Verification Pending">
-                                <Loader2 size={20} className="text-yellow-700 animate-spin" />
-                            </div>
-                        )}
-                         {verificationStatus === VerificationStatus.REJECTED && (
-                            <div className="bg-red-100 rounded-full p-1" title="Verification Rejected">
-                                <AlertTriangle size={20} className="text-red-700" />
-                            </div>
-                        )}
                     </div>
                     <button 
                         onClick={() => onTabChange('chat')} 
@@ -685,42 +604,11 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                     </button>
                 </div>
                 
-                {/* STATUS BADGES */}
-                {verificationStatus === VerificationStatus.UNVERIFIED && (
-                    <div 
-                        onClick={onVerifyClick}
-                        className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-100 text-red-700 rounded-lg text-xs font-bold cursor-pointer hover:bg-red-100 transition-colors"
-                    >
-                        <ShieldAlert size={14} />
-                        <span>Verify Identity to boost visibility</span>
-                        <ArrowRight size={14} />
-                    </div>
-                )}
-                
-                {verificationStatus === VerificationStatus.PENDING && (
-                    <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-yellow-50 border border-yellow-100 text-yellow-700 rounded-lg text-xs font-bold">
-                        <Loader2 size={14} className="animate-spin" />
-                        <span>Verification Pending Review</span>
-                    </div>
-                )}
-                
-                {verificationStatus === VerificationStatus.VERIFIED && (
-                    <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-100 text-green-700 rounded-lg text-xs font-bold">
-                        <CheckCircle size={14} />
-                        <span>Verified Agent</span>
-                    </div>
-                )}
-
-                 {verificationStatus === VerificationStatus.REJECTED && (
-                    <div 
-                        onClick={onVerifyClick}
-                        className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-red-100 border border-red-200 text-red-800 rounded-lg text-xs font-bold cursor-pointer hover:bg-red-200"
-                    >
-                        <AlertTriangle size={14} />
-                        <span>Verification Rejected</span>
-                        <ArrowRight size={14} />
-                    </div>
-                )}
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-100 text-amber-800 rounded-lg text-xs font-medium">
+                    <ShieldAlert size={14} />
+                    <span>Ilé identity checks are not connected. This account has not been identity-verified by Ilé.</span>
+                    <button onClick={onVerifyClick} className="underline font-bold">Details</button>
+                </div>
             </div>
             
             {/* Quick Stats & Export Action */}
@@ -766,43 +654,6 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
                  </div>
             </div>
         </div>
-
-        {/* Verification Banner (Only if not verified) - Now Prominent */}
-        {!isVerified && (
-            <div className={`mb-8 border rounded-[28px] p-6 relative overflow-hidden ${isPending ? 'bg-yellow-50 border-yellow-100' : 'bg-red-50 border-red-100'}`}>
-                    {/* Background decoration */}
-                <div className={`absolute top-0 right-0 w-32 h-32 rounded-full -mr-16 -mt-16 opacity-50 pointer-events-none ${isPending ? 'bg-yellow-100' : 'bg-red-100'}`}></div>
-                
-                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                    <div className="flex gap-4">
-                        <div className={`w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm shrink-0 ${isPending ? 'text-yellow-600' : 'text-red-600'}`}>
-                            {isPending ? <Loader2 size={24} className="animate-spin" /> : <ShieldAlert size={24} />}
-                        </div>
-                        <div>
-                            <h3 className={`text-lg font-bold ${isPending ? 'text-yellow-900' : 'text-red-900'}`}>
-                                {isPending ? 'Verification in Progress' : 'Verify Your Identity'}
-                            </h3>
-                            <p className={`text-sm mt-1 max-w-lg ${isPending ? 'text-yellow-800' : 'text-red-800'}`}>
-                                {isPending 
-                                    ? 'Your documents are currently under review. We will notify you once completed.' 
-                                    : 'Build trust with clients and unlock full access to leads by verifying your account today.'
-                                }
-                            </p>
-                        </div>
-                    </div>
-                    <button 
-                        onClick={onVerifyClick}
-                        className={`px-6 py-3 rounded-xl font-bold shadow-sm transition-all whitespace-nowrap ${
-                            isPending 
-                            ? 'bg-white text-yellow-700 border border-yellow-200 hover:bg-yellow-50'
-                            : 'bg-red-600 text-white hover:bg-red-700 shadow-red-200'
-                        }`}
-                    >
-                        {isPending ? 'Check Status' : 'Start Verification'}
-                    </button>
-                </div>
-            </div>
-        )}
 
         {/* Tab Switcher */}
         <div className="bg-surface-container-low p-1 rounded-2xl inline-flex flex-wrap mb-8 w-full md:w-auto">
@@ -912,10 +763,10 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ user, onVerifyClick, on
         )}
 
         {/* AI Buyer Intent Score Modal */}
-        {selectedLeadForIntent && (
+        {selectedLeadForIntent && myListings.find(p => p.id === selectedLeadForIntent.propertyId) && (
             <BuyerIntentModal
                 lead={selectedLeadForIntent}
-                property={MOCK_PROPERTIES.find(p => p.id === selectedLeadForIntent.propertyId)}
+                property={myListings.find(p => p.id === selectedLeadForIntent.propertyId)!}
                 onClose={() => setSelectedLeadForIntent(null)}
             />
         )}

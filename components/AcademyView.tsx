@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, AcademyUnit, AcademyLesson, Term } from '../types';
 import { MOCK_ACADEMY_UNITS, MOCK_TERMS } from '../services/mockData';
 import { generateAcademyLesson, explainRealEstateTerm } from '../services/geminiService';
-import { saveUserProfileToFirestore } from '../services/firebase';
+import { getAcademyProgressFromFirestore, saveAcademyProgressToFirestore } from '../services/firebase';
 import { ArrowLeft, Award, Flame, Zap, CheckCircle2, Lock, Play, BookOpen, Search, Sparkles, HelpCircle, Trophy, RefreshCw, ChevronRight, Check, AlertCircle } from 'lucide-react';
 
 interface AcademyViewProps {
@@ -38,6 +38,7 @@ export const AcademyView: React.FC<AcademyViewProps> = ({ user, onBack }) => {
   useEffect(() => {
     const key = `gemini_academy_progress_${user?.id || 'guest'}`;
     const stored = localStorage.getItem(key);
+    let isMounted = true;
     if (stored) {
       try {
         const completedIds: string[] = JSON.parse(stored);
@@ -54,6 +55,22 @@ export const AcademyView: React.FC<AcademyViewProps> = ({ user, onBack }) => {
         console.error("Failed to load saved academy progress", e);
       }
     }
+
+    if (user?.id) {
+      void getAcademyProgressFromFirestore(user.id).then(completedIds => {
+        if (!isMounted || completedIds.length === 0) return;
+        localStorage.setItem(key, JSON.stringify(completedIds));
+        setUnits(prev => prev.map(unit => ({
+          ...unit,
+          lessons: unit.lessons.map(lesson => ({
+            ...lesson,
+            isCompleted: completedIds.includes(lesson.id) || lesson.isCompleted,
+          })),
+        })));
+      });
+    }
+
+    return () => { isMounted = false; };
   }, [user?.id]);
 
   // Launch a Lesson or Quiz
@@ -116,10 +133,7 @@ export const AcademyView: React.FC<AcademyViewProps> = ({ user, onBack }) => {
           localStorage.setItem(key, JSON.stringify(completedLessonIds));
 
           if (user?.id) {
-            saveUserProfileToFirestore({
-              ...user,
-              academyProgress: completedLessonIds
-            } as any).catch(console.error);
+            void saveAcademyProgressToFirestore(user.id, completedLessonIds);
           }
 
           return updatedUnits;

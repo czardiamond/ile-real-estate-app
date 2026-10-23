@@ -1,28 +1,14 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { MOCK_PROPERTIES } from '../services/mockData';
 import PropertyCard from './PropertyCard';
 import CompareModal from './CompareModal';
 import { Property, PropertyType, FloodRisk } from '../types';
-import { Search, Filter, Home, GlassWater, PartyPopper, Briefcase, Map as MapIcon, X, Car, Zap, Check, ChevronDown, Waves, List, Bed, Bath, Armchair, Sparkles, Scale, Locate, ArrowUpDown, Calendar, DollarSign, Calculator, Flame } from 'lucide-react';
-import { PriceHeatmap } from './PriceHeatmap';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import { Search, Filter, Home, GlassWater, PartyPopper, Briefcase, Map as MapIcon, X, Car, Zap, Check, ChevronDown, Waves, List, Bed, Bath, Armchair, Sparkles, Scale, Locate, ArrowUpDown, Calendar, DollarSign, Flame } from 'lucide-react';
+import { MapContainer, TileLayer, useMap, ZoomControl } from 'react-leaflet';
 import L from 'leaflet';
-
-// Fix for default Leaflet icons in React
-const iconRetinaUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png';
-const iconUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png';
-const shadowUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png';
-
-L.Marker.prototype.options.icon = L.icon({
-    iconUrl,
-    iconRetinaUrl,
-    shadowUrl,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41]
-});
+import { DEFAULT_MAP_CENTER, isValidCoordinates, OSM_ATTRIBUTION, OSM_TILE_URL } from '../services/mapUtils';
+import MapSupport from './MapSupport';
+import AccessiblePriceMarker from './AccessiblePriceMarker';
 
 interface ExploreViewProps {
   properties?: Property[];
@@ -32,7 +18,6 @@ interface ExploreViewProps {
   onViewFloorPlan: (property: Property) => void;
   savedPropertyIds?: Set<string>;
   onToggleSave?: (id: string) => void;
-  onOpenMortgageCalculator: () => void;
 }
 
 // Component to handle map bounds updates
@@ -42,14 +27,18 @@ const MapUpdater: React.FC<{ properties: Property[] }> = ({ properties }) => {
     useEffect(() => {
         if (properties.length > 0) {
             const latLngs = properties
-                .filter(p => p.coordinates)
+                .filter(p => isValidCoordinates(p.coordinates))
                 .map(p => [p.coordinates!.lat, p.coordinates!.lng] as [number, number]);
-            
+
             if (latLngs.length > 0) {
                 const bounds = L.latLngBounds(latLngs);
                 // Add padding to bounds
-                map.flyToBounds(bounds, { padding: [50, 50], duration: 1.5 });
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+            } else {
+                map.setView(DEFAULT_MAP_CENTER, 6);
             }
+        } else {
+            map.setView(DEFAULT_MAP_CENTER, 6);
         }
     }, [properties, map]);
 
@@ -59,47 +48,62 @@ const MapUpdater: React.FC<{ properties: Property[] }> = ({ properties }) => {
 // Component to handle "Locate Me" functionality
 const LocateControl = () => {
     const map = useMap();
+    const [message, setMessage] = useState('');
+    const [locating, setLocating] = useState(false);
     const handleLocate = (e: React.MouseEvent) => {
         e.stopPropagation();
         e.preventDefault();
+        if (!navigator.geolocation) {
+            setMessage('Location is not supported in this browser. Search by area or city instead.');
+            return;
+        }
+        setMessage('');
+        setLocating(true);
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 const { latitude, longitude } = position.coords;
-                map.flyTo([latitude, longitude], 15, { duration: 2 });
+                setLocating(false);
+                if (isValidCoordinates({ lat: latitude, lng: longitude })) map.setView([latitude, longitude], 15);
             },
             (error) => {
-                console.error("Location error", error);
-                alert("Could not access location. Please enable permissions to find properties near you.");
-            }
+                setLocating(false);
+                setMessage(error.code === 1 ? 'Location permission was denied. Allow location in your browser or search by area or city.' : 'Your location is unavailable. Search by area or city, or try again.');
+            },
+            { timeout: 10000, maximumAge: 60000 }
         );
     };
 
     return (
-        <button 
+      <>
+        <button
+            type="button"
             onClick={handleLocate}
+            disabled={locating}
             className="absolute top-4 right-4 z-[400] bg-white p-3 rounded-full shadow-lg border border-gray-100 text-gray-700 hover:bg-gray-50 hover:text-primary transition-all"
-            title="Locate Me"
+            title={locating ? 'Finding your location' : 'Locate Me'}
+            aria-label={locating ? 'Finding your location' : 'Locate Me'}
         >
             <Locate size={20} />
         </button>
+        {message && <p role="status" className="absolute top-20 right-4 left-4 z-[400] rounded-lg bg-white p-3 text-sm text-gray-800 shadow-lg">{message}</p>}
+      </>
     );
 };
 
-const ExploreView: React.FC<ExploreViewProps> = ({ 
+const ExploreView: React.FC<ExploreViewProps> = ({
     properties,
-    onPropertySelect, 
-    onChat, 
-    onView3D, 
+    onPropertySelect,
+    onChat,
+    onView3D,
     onViewFloorPlan,
     savedPropertyIds,
-    onToggleSave,
-    onOpenMortgageCalculator
+    onToggleSave
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('All');
-  const [viewMode, setViewMode] = useState<'list' | 'map' | 'heatmap'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [selectedMapPin, setSelectedMapPin] = useState<Property | null>(null);
-  
+
   // Filter State
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000000000]); // Max 1B
@@ -109,7 +113,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
   const [filterFloodRisk, setFilterFloodRisk] = useState<string>('');
   const [filterPropertyTypes, setFilterPropertyTypes] = useState<string[]>([]);
   const [sortOption, setSortOption] = useState<string>('newest'); // 'newest', 'price_asc', 'price_desc'
-  
+
   // Residential Filters
   const [minBedrooms, setMinBedrooms] = useState(0);
   const [minBathrooms, setMinBathrooms] = useState(0);
@@ -140,16 +144,16 @@ const ExploreView: React.FC<ExploreViewProps> = ({
   }, [activeCategory]);
 
   const sourceProperties = useMemo(() => {
-    return properties && properties.length > 0 ? properties : MOCK_PROPERTIES;
+    return properties || [];
   }, [properties]);
 
   const filteredProperties = useMemo(() => {
     let result = sourceProperties.filter(p => {
       // 1. Search Term
-      const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            p.location.area.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            p.location.city.toLowerCase().includes(searchTerm.toLowerCase());
-      
+      const query = searchTerm.trim().toLowerCase();
+      const matchesSearch = [p.title, p.location.area, p.location.city, p.location.state, p.type]
+        .some(value => value?.toLowerCase().includes(query));
+
       // 2. Category
       let matchesCategory = true;
       if (activeCategory === 'Living') {
@@ -181,9 +185,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       let matchesGen = true;
       if (reqGenerator) {
          // Check for keywords in features or if power hours are high (>18h/day)
-         const hasGenFeature = p.features.some(f => 
-             f.toLowerCase().includes('generator') || 
-             f.toLowerCase().includes('inverter') || 
+         const hasGenFeature = p.features.some(f =>
+             f.toLowerCase().includes('generator') ||
+             f.toLowerCase().includes('inverter') ||
              f.toLowerCase().includes('solar') ||
              f.toLowerCase().includes('power')
          );
@@ -238,9 +242,16 @@ const ExploreView: React.FC<ExploreViewProps> = ({
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
-  }, [searchTerm, activeCategory, priceRange, minCapacity, minParking, reqGenerator, filterFloodRisk, minBedrooms, minBathrooms, reqFurnished, reqServiced, filterPropertyTypes, sortOption]);
+  }, [sourceProperties, searchTerm, activeCategory, priceRange, minCapacity, minParking, reqGenerator, filterFloodRisk, minBedrooms, minBathrooms, reqFurnished, reqServiced, filterPropertyTypes, sortOption]);
+
+  const mappedProperties = useMemo(() => filteredProperties.filter(p => isValidCoordinates(p.coordinates)), [filteredProperties]);
+  useEffect(() => {
+    setSelectedMapPin(current => current ? mappedProperties.find(p => p.id === current.id) || null : null);
+  }, [mappedProperties]);
 
   const resetFilters = () => {
+      setSearchTerm('');
+      setActiveCategory('All');
       setPriceRange([0, 1000000000]);
       setMinCapacity(0);
       setMinParking(0);
@@ -283,7 +294,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
   };
 
   const togglePropertyType = (type: string) => {
-      setFilterPropertyTypes(prev => 
+      setFilterPropertyTypes(prev =>
           prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
       );
   };
@@ -294,17 +305,19 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       return `₦${val}`;
   };
 
-  const isFilterActive = minCapacity > 0 || minParking > 0 || reqGenerator || filterFloodRisk || minBedrooms > 0 || minBathrooms > 0 || reqFurnished || reqServiced || filterPropertyTypes.length > 0;
+  const isFilterActive = priceRange[0] > 0 || priceRange[1] < 1000000000 || minCapacity > 0 || minParking > 0 || reqGenerator || filterFloodRisk || minBedrooms > 0 || minBathrooms > 0 || reqFurnished || reqServiced || filterPropertyTypes.length > 0;
 
   // Helper to create custom DivIcons for price pins
   const createPriceIcon = (property: Property, isSelected: boolean) => {
     const isCompared = compareList.some(cp => cp.id === property.id);
     const bgColor = isSelected ? '#166534' : isCompared ? '#111827' : '#ffffff';
     const textColor = isSelected || isCompared ? '#ffffff' : '#166534';
-    const priceText = formatCurrency(property.price);
-
-    const html = `
-      <div style="
+    const priceText = formatCurrency(Number.isFinite(property.price) ? property.price : 0);
+    const html = document.createElement('div');
+    html.setAttribute('role', 'img');
+    html.setAttribute('aria-label', `${property.title}, ${priceText}`);
+    html.textContent = priceText;
+    html.style.cssText = `
         background-color: ${bgColor};
         color: ${textColor};
         padding: 4px 8px;
@@ -314,11 +327,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
         box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         white-space: nowrap;
         border: 1px solid ${isSelected ? '#ffffff' : '#166534'};
-        transform: translate(-50%, -50%);
         transition: all 0.2s ease;
-      ">
-        ${priceText}
-      </div>
     `;
 
     return L.divIcon({
@@ -337,47 +346,52 @@ const ExploreView: React.FC<ExploreViewProps> = ({
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
       `}</style>
-      
+
       {/* Search & Categories Header */}
-      <div className="px-4 md:px-8 mb-6 bg-surface py-3 transition-all border-b border-outline-variant/30">
-        <div className="max-w-6xl mx-auto space-y-4">
+      <div className="px-4 py-5 md:px-8 md:py-6">
+        <div className="mx-auto max-w-7xl space-y-4">
           {/* Main Search Bar Row */}
           <div className="flex flex-col sm:flex-row items-center gap-3">
             {/* Search Input Box with Sparkles & Filter */}
-            <div className="relative flex-1 w-full bg-surface-container-low dark:bg-slate-900 rounded-full border border-outline-variant/60 shadow-sm hover:shadow-md focus-within:shadow-md focus-within:border-primary transition-all flex items-center px-4 py-1.5">
-              <Search className="text-on-surface-variant/60 shrink-0 mr-2" size={20} />
-              <input 
-                type="text"
-                placeholder="Search Lekki, Wuse, Duplex, Short-let..."
+            <div className="relative flex w-full flex-1 items-center rounded-xl border border-outline bg-surface-container-low px-4 py-1.5 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+              <Search className="mr-2 shrink-0 text-on-surface-variant" size={19} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search by property name, neighbourhood or city"
+                placeholder="Search area, city or type"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-transparent border-none outline-none text-on-surface placeholder:text-on-surface-variant/50 text-sm font-medium py-2"
+                className="w-full border-0 bg-transparent py-2.5 text-sm font-medium text-on-surface outline-none placeholder:text-on-surface-variant focus:ring-0"
               />
-              <div className="flex items-center gap-1 shrink-0 ml-2 pl-2 border-l border-outline-variant/40">
-                <button 
+              <div className="ml-2 flex shrink-0 items-center gap-1 border-l border-outline-variant pl-2">
+                <button
+                  type="button"
                   onClick={() => setIsFilterOpen(true)}
-                  className={`p-2 rounded-full transition-colors flex items-center gap-1.5 ${
-                    isFilterActive 
-                    ? 'bg-primary/10 text-primary font-semibold' 
+                  aria-label={isFilterActive ? 'Open filters; filters are active' : 'Open filters'}
+                  className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    isFilterActive
+                    ? 'bg-primary/10 text-primary'
                     : 'text-on-surface-variant hover:bg-surface-container'
                   }`}
-                  title="Filter Properties"
                 >
-                  <Filter size={18} />
-                  {isFilterActive && <span className="w-2 h-2 rounded-full bg-primary" />}
+                  <Filter size={17} aria-hidden="true" />
+                  <span>Filters</span>
+                  {isFilterActive && <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />}
                 </button>
               </div>
             </div>
 
             {/* View Mode & Tools Toolbar Row */}
-            <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar py-1">
+            <div className="flex w-full items-center justify-between gap-2 overflow-x-auto py-1 sm:w-auto sm:justify-end">
               {/* View Switchers */}
               <div className="flex items-center gap-1 bg-surface-container p-1 rounded-full border border-outline-variant/40 shadow-inner shrink-0">
-                <button 
+                <button
+                  type="button"
                   onClick={() => setViewMode('list')}
+                  aria-pressed={viewMode === 'list'}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                    viewMode === 'list' 
-                    ? 'bg-primary text-white shadow-sm' 
+                    viewMode === 'list'
+                    ? 'bg-primary text-white shadow-sm'
                     : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
@@ -385,11 +399,13 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                   <span>List</span>
                 </button>
 
-                <button 
+                <button
+                  type="button"
                   onClick={() => setViewMode('map')}
+                  aria-pressed={viewMode === 'map'}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                    viewMode === 'map' 
-                    ? 'bg-primary text-white shadow-sm' 
+                    viewMode === 'map'
+                    ? 'bg-primary text-white shadow-sm'
                     : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
@@ -397,26 +413,17 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                   <span>Map</span>
                 </button>
 
-                <button 
-                  onClick={() => setViewMode('heatmap')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                    viewMode === 'heatmap' 
-                    ? 'bg-amber-600 text-white shadow-sm' 
-                    : 'text-amber-700 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
-                  }`}
-                  title="Google Maps Price Valuation Heatmap"
-                >
-                  <Flame size={15} className="animate-pulse" />
-                  <span>Heatmap</span>
-                </button>
               </div>
 
               {/* Compare Mode Toggle */}
               <button
+                type="button"
                 onClick={() => setIsCompareMode(!isCompareMode)}
+                aria-pressed={isCompareMode}
+                aria-label={isCompareMode ? 'Turn off compare mode' : 'Compare properties'}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 shrink-0 ${
-                  isCompareMode 
-                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm' 
+                  isCompareMode
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
                   : 'bg-surface-container-low border-outline-variant/60 text-on-surface hover:bg-surface-container'
                 }`}
               >
@@ -429,14 +436,6 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                 )}
               </button>
 
-              {/* Mortgage Calculator Button */}
-              <button 
-                onClick={onOpenMortgageCalculator}
-                className="p-2 rounded-full bg-surface-container-low text-primary border border-outline-variant/60 shadow-sm hover:bg-primary/10 transition-all shrink-0"
-                title="Mortgage Calculator"
-              >
-                <Calculator size={18} />
-              </button>
             </div>
           </div>
 
@@ -447,10 +446,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({
               return (
                 <button
                   key={cat.id}
+                  type="button"
                   onClick={() => { setActiveCategory(cat.id); setFilterPropertyTypes([]); }}
+                  aria-pressed={isActive}
                   className={`flex items-center gap-2 text-sm font-semibold whitespace-nowrap transition-all relative py-1 px-3 rounded-full ${
                     isActive
-                    ? 'bg-primary text-white shadow-xs' 
+                    ? 'bg-primary text-white shadow-xs'
                     : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
                   }`}
                 >
@@ -465,8 +466,8 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       {/* COMPARISON DOCK */}
       {compareList.length > 0 && (
           <div className="fixed bottom-20 md:bottom-8 left-0 right-0 z-40 flex justify-center pointer-events-none px-4">
-              <div className="bg-gray-900 text-white p-2 pr-4 rounded-full shadow-2xl flex items-center gap-3 pointer-events-auto animate-in slide-in-from-bottom-10 fade-in duration-300 border border-gray-800">
-                
+              <div className="flex items-center gap-3 rounded-2xl border border-gray-700 bg-gray-900 p-2 pr-4 text-white shadow-xl pointer-events-auto animate-in slide-in-from-bottom-10 fade-in duration-300">
+
                 {/* Thumbnails */}
                 <div className="flex -space-x-3 pl-1">
                     {compareList.map(p => (
@@ -488,20 +489,23 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                     <span className="text-sm font-bold">{compareList.length} of 3</span>
                 </div>
 
-                <button 
+                <button
+                    type="button"
                     onClick={() => setShowCompareModal(true)}
                     disabled={compareList.length < 2}
                     className={`ml-2 px-5 py-2 rounded-full font-bold text-sm transition-all ${
-                        compareList.length >= 2 
-                        ? 'bg-white text-gray-900 hover:bg-gray-200' 
+                        compareList.length >= 2
+                        ? 'bg-white text-gray-900 hover:bg-gray-200'
                         : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                     }`}
                 >
                     View
                 </button>
-                
-                <button 
+
+                <button
+                    type="button"
                     onClick={() => setCompareList([])}
+                    aria-label="Clear comparison"
                     className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 text-gray-400 transition-colors"
                 >
                     <X size={16} />
@@ -511,21 +515,21 @@ const ExploreView: React.FC<ExploreViewProps> = ({
       )}
 
       {/* View Content */}
-      <div className="px-4 md:px-8 h-full max-w-[1600px] mx-auto">
-        {viewMode === 'heatmap' ? (
-             <PriceHeatmap onPropertySelect={handlePropertyClick} />
-        ) : viewMode === 'list' ? (
+      <div className="mx-auto h-full max-w-[1600px] px-4 md:px-8">
+        {viewMode === 'list' && <p className="mb-4 text-sm font-medium text-on-surface-variant" aria-live="polite">{filteredProperties.length} {filteredProperties.length === 1 ? 'property' : 'properties'} found</p>}
+        {viewMode === 'list' ? (
              /* LIST VIEW */
             filteredProperties.length === 0 ? (
-                <div className="text-center py-20 flex flex-col items-center">
-                    <div className="w-32 h-32 bg-gray-100 rounded-[2rem] flex items-center justify-center mb-6">
-                        <MapIcon className="text-gray-400" size={48} />
+                <div className="flex flex-col items-center py-20 text-center">
+                    <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-3xl bg-surface-container">
+                        <MapIcon className="text-on-surface-variant" size={38} />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900">No spaces found here</h3>
-                    <p className="text-gray-500 max-w-xs mx-auto mt-2">Try adjusting your search area or filters to find what you're looking for.</p>
-                    <button 
+                    <h3 className="text-xl font-semibold text-on-surface">No properties match this search</h3>
+                    <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-on-surface-variant">Try a nearby area or remove a filter. You can also clear everything and start again.</p>
+                    <button
+                    type="button"
                     onClick={resetFilters}
-                    className="mt-6 px-6 py-3 bg-primary text-white rounded-full font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                    className="mt-6 min-h-11 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                     >
                     Clear all filters
                     </button>
@@ -534,9 +538,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 pb-24">
                     {filteredProperties.map(property => (
                         <div key={property.id} className="h-full">
-                            <PropertyCard 
-                                property={property} 
-                                onClick={() => handlePropertyClick(property)} 
+                            <PropertyCard
+                                property={property}
+                                onClick={() => handlePropertyClick(property)}
                                 onChat={() => onChat(property)}
                                 onView3D={() => onView3D(property)}
                                 onViewFloorPlan={() => onViewFloorPlan(property)}
@@ -554,60 +558,52 @@ const ExploreView: React.FC<ExploreViewProps> = ({
         ) : (
             /* REAL MAP VIEW */
             <div className="relative w-full h-[60vh] md:h-[calc(100vh-240px)] rounded-[32px] overflow-hidden border border-outline-variant/20 shadow-xl">
-                <MapContainer 
-                    center={[6.5244, 3.3792]} // Default Lagos
-                    zoom={12} 
+                <MapContainer
+                    center={DEFAULT_MAP_CENTER}
+                    zoom={6}
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={false}
                 >
                     <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                        attribution={OSM_ATTRIBUTION}
+                        url={OSM_TILE_URL}
+                        maxZoom={19}
                     />
-                    
+                    <MapSupport />
+                    <ZoomControl position="topleft" />
+
                     {/* Auto-Zoom to Pins */}
-                    <MapUpdater properties={filteredProperties} />
-                    
-                    {/* Locate Me Control */}
-                    {/* Map Overlay Controls - Elegant Chips */}
+                    <MapUpdater properties={mappedProperties} />
+
+                    {/* Map attribution and listing-only context */}
                     <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[400] w-full max-w-2xl px-4">
-                        <div className="bg-white/90 backdrop-blur-xl p-2 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-white/20 flex items-center justify-center gap-3 overflow-x-auto no-scrollbar">
-                            {['Restaurants', 'Schools', 'Hospitals', 'Parks', 'Banks'].map((place) => (
-                                <button 
-                                    key={place}
-                                    className="px-6 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 hover:bg-primary hover:text-white transition-all whitespace-nowrap flex items-center gap-2"
-                                >
-                                    {place === 'Restaurants' && <GlassWater size={14} strokeWidth={1.5} />}
-                                    {place === 'Schools' && <Briefcase size={14} strokeWidth={1.5} />}
-                                    {place === 'Hospitals' && <Check size={14} strokeWidth={1.5} />}
-                                    {place === 'Parks' && <Waves size={14} strokeWidth={1.5} />}
-                                    {place === 'Banks' && <DollarSign size={14} strokeWidth={1.5} />}
-                                    {place}
-                                </button>
-                            ))}
+                        <div role="status" className="rounded-xl border border-outline bg-white px-4 py-3 text-center text-xs leading-5 text-on-surface shadow-md">
+                          {filteredProperties.length === 0 ? 'No properties match this search.' : `${mappedProperties.length} of ${filteredProperties.length} matching properties have map locations.`}
+                          {mappedProperties.length < filteredProperties.length && ' Exact seller coordinates stay private; properties without a public map location remain in the list.'}
+                          {mappedProperties.length === 0 && <button type="button" onClick={() => setViewMode('list')} className="ml-2 font-bold underline">Browse list</button>}
                         </div>
                     </div>
-            
+
             <LocateControl />
 
                     {/* Property Pins */}
-                    {filteredProperties.filter(p => p.coordinates).map(p => {
+                    {mappedProperties.map(p => {
                          if (!p.coordinates) return null;
                          const isSelected = selectedMapPin?.id === p.id;
-                         
+
                          return (
-                            <Marker 
-                                key={p.id} 
+                            <AccessiblePriceMarker
+                                key={p.id}
                                 position={[p.coordinates.lat, p.coordinates.lng]}
+                                title={p.title}
+                                selected={isCompareMode ? compareList.some(property => property.id === p.id) : isSelected}
                                 icon={createPriceIcon(p, isSelected)}
-                                eventHandlers={{
-                                    click: () => {
+                                onActivate={() => {
                                         if (isCompareMode) {
                                             toggleCompare(p);
                                         } else {
                                             setSelectedMapPin(p);
                                         }
-                                    },
                                 }}
                             />
                          )
@@ -616,24 +612,26 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
                 {/* Selected Property Overlay Card */}
                 {selectedMapPin && (
-                    <div 
+                    <div
                         className="absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-80 z-[1000] pointer-events-auto"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div 
+                        <div
                             className="relative animate-in slide-in-from-bottom fade-in duration-300"
                         >
-                            <button 
+                            <button
+                                type="button"
+                                aria-label="Close selected map property"
                                 onClick={(e) => {
-                                    e.stopPropagation(); 
+                                    e.stopPropagation();
                                     setSelectedMapPin(null);
-                                }} 
+                                }}
                                 className="absolute -top-3 -right-3 bg-white text-gray-800 rounded-full p-2 shadow-lg z-10 hover:bg-gray-100 transition-colors border border-gray-100"
                             >
                                 <X size={16} />
                             </button>
                             <div className="shadow-2xl rounded-[24px] border-4 border-white/50 bg-white">
-                                <PropertyCard 
+                                <PropertyCard
                                     property={selectedMapPin}
                                     onClick={() => handlePropertyClick(selectedMapPin)}
                                     onChat={() => onChat(selectedMapPin)}
@@ -643,6 +641,8 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                     isSelectable={isCompareMode}
                                     isSelected={compareList.some(p => p.id === selectedMapPin.id)}
                                     isCompared={compareList.some(p => p.id === selectedMapPin.id)}
+                                    isSaved={savedPropertyIds?.has(selectedMapPin.id)}
+                                    onToggleSave={onToggleSave ? () => onToggleSave(selectedMapPin.id) : undefined}
                                     compact={true}
                                 />
                             </div>
@@ -655,12 +655,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
       {/* FILTER MODAL */}
       {isFilterOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center p-0 md:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-surface-container-low w-full md:max-w-md rounded-t-[32px] md:rounded-[32px] p-6 shadow-2xl max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-0 md:items-center md:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setIsFilterOpen(false); }}>
+            <section role="dialog" aria-modal="true" aria-labelledby="property-filter-heading" className="max-h-[90dvh] w-full overflow-y-auto rounded-t-2xl border border-outline-variant bg-surface-container-low p-5 shadow-2xl md:max-w-md md:rounded-2xl md:p-6">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-2xl font-bold text-gray-900">Filters</h3>
-                    <button onClick={() => setIsFilterOpen(false)} className="p-2 bg-white hover:bg-gray-100 rounded-full transition-colors">
-                        <X size={24} className="text-gray-900" />
+                    <h3 id="property-filter-heading" className="font-display text-2xl font-semibold text-on-surface">Filters</h3>
+                    <button type="button" onClick={() => setIsFilterOpen(false)} aria-label="Close filters" className="flex h-11 w-11 items-center justify-center rounded-lg border border-outline bg-white text-on-surface transition-colors hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                        <X size={20} aria-hidden="true" />
                     </button>
                 </div>
 
@@ -678,10 +678,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                             ].map((opt) => (
                                 <button
                                     key={opt.id}
+                                    type="button"
                                     onClick={() => setSortOption(opt.id)}
-                                    className={`px-4 py-2.5 rounded-xl border flex items-center gap-2 text-sm font-bold whitespace-nowrap transition-all ${
-                                        sortOption === opt.id 
-                                        ? 'bg-primary/10 border-primary text-primary' 
+                                    aria-pressed={sortOption === opt.id}
+                                    className={`px-4 py-2.5 rounded-xl border flex items-center gap-2 text-sm font-bold whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                                        sortOption === opt.id
+                                        ? 'bg-primary/10 border-primary text-primary'
                                         : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                                     }`}
                                 >
@@ -702,7 +704,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                 return (
                                     <button
                                         key={type}
+                                        type="button"
                                         onClick={() => togglePropertyType(type)}
+                                        aria-pressed={isSelected}
                                         className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
                                             isSelected
                                             ? 'bg-gray-900 text-white border-gray-900 shadow-md'
@@ -724,20 +728,22 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                         </div>
                         <div className="flex gap-3">
                             <div className="flex-1 bg-white p-3 rounded-xl border border-gray-200 focus-within:border-primary transition-colors shadow-sm">
-                                <label className="block text-[10px] text-gray-400 uppercase font-bold">Min Price</label>
-                                <input 
-                                    type="number" 
-                                    value={priceRange[0]} 
-                                    onChange={(e) => setPriceRange([Number(e.target.value), priceRange[1]])} 
+                                <label htmlFor="filter-min-price" className="block text-[10px] text-gray-400 uppercase font-bold">Min Price</label>
+                                <input
+                                    id="filter-min-price"
+                                    type="number"
+                                    value={priceRange[0]}
+                                    onChange={(e) => setPriceRange([Number(e.target.value), priceRange[1]])}
                                     className="w-full bg-transparent outline-none font-bold text-gray-900"
                                 />
                             </div>
                             <div className="flex-1 bg-white p-3 rounded-xl border border-gray-200 focus-within:border-primary transition-colors shadow-sm">
-                                <label className="block text-[10px] text-gray-400 uppercase font-bold">Max Price</label>
-                                <input 
-                                    type="number" 
-                                    value={priceRange[1]} 
-                                    onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])} 
+                                <label htmlFor="filter-max-price" className="block text-[10px] text-gray-400 uppercase font-bold">Max Price</label>
+                                <input
+                                    id="filter-max-price"
+                                    type="number"
+                                    value={priceRange[1]}
+                                    onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])}
                                     className="w-full bg-transparent outline-none font-bold text-gray-900"
                                 />
                             </div>
@@ -751,7 +757,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                 <Home size={20} className="text-primary" />
                                 <span className="font-bold text-gray-900">House Specs</span>
                             </div>
-                            
+
                             <div className="grid grid-cols-2 gap-4 mb-4">
                                 {/* Bedrooms */}
                                 <div>
@@ -759,13 +765,17 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                         <Bed size={14} /> Bedrooms
                                     </label>
                                     <div className="flex items-center gap-1 bg-white p-1.5 rounded-full justify-between shadow-sm">
-                                        <button 
-                                            onClick={() => setMinBedrooms(Math.max(0, minBedrooms - 1))} 
+                                        <button
+                                            type="button"
+                                            onClick={() => setMinBedrooms(Math.max(0, minBedrooms - 1))}
+                                            aria-label="Decrease minimum bedrooms"
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >-</button>
                                         <span className="text-sm font-bold">{minBedrooms > 0 ? minBedrooms + '+' : 'Any'}</span>
-                                        <button 
-                                            onClick={() => setMinBedrooms(minBedrooms + 1)} 
+                                        <button
+                                            type="button"
+                                            onClick={() => setMinBedrooms(minBedrooms + 1)}
+                                            aria-label="Increase minimum bedrooms"
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >+</button>
                                     </div>
@@ -776,13 +786,17 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                         <Bath size={14} /> Bathrooms
                                     </label>
                                     <div className="flex items-center gap-1 bg-white p-1.5 rounded-full justify-between shadow-sm">
-                                        <button 
-                                            onClick={() => setMinBathrooms(Math.max(0, minBathrooms - 1))} 
+                                        <button
+                                            type="button"
+                                            onClick={() => setMinBathrooms(Math.max(0, minBathrooms - 1))}
+                                            aria-label="Decrease minimum bathrooms"
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >-</button>
                                         <span className="text-sm font-bold">{minBathrooms > 0 ? minBathrooms + '+' : 'Any'}</span>
-                                        <button 
-                                            onClick={() => setMinBathrooms(minBathrooms + 1)} 
+                                        <button
+                                            type="button"
+                                            onClick={() => setMinBathrooms(minBathrooms + 1)}
+                                            aria-label="Increase minimum bathrooms"
                                             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                         >+</button>
                                     </div>
@@ -791,10 +805,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({
 
                              {/* Furnished & Serviced Toggles */}
                              <div className="space-y-2">
-                                <div 
+                                <button
+                                    type="button"
+                                    aria-pressed={reqFurnished}
                                     className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
-                                        reqFurnished 
-                                        ? 'bg-primary border-primary text-white shadow-md' 
+                                        reqFurnished
+                                        ? 'bg-primary border-primary text-white shadow-md'
                                         : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 shadow-sm'
                                     }`}
                                     onClick={() => setReqFurnished(!reqFurnished)}
@@ -804,12 +820,14 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                         <span className="text-sm font-bold">Furnished</span>
                                     </div>
                                     {reqFurnished && <Check size={16} />}
-                                </div>
+                                </button>
 
-                                <div 
+                                <button
+                                    type="button"
+                                    aria-pressed={reqServiced}
                                     className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
-                                        reqServiced 
-                                        ? 'bg-primary border-primary text-white shadow-md' 
+                                        reqServiced
+                                        ? 'bg-primary border-primary text-white shadow-md'
                                         : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 shadow-sm'
                                     }`}
                                     onClick={() => setReqServiced(!reqServiced)}
@@ -819,7 +837,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                         <span className="text-sm font-bold">Serviced</span>
                                     </div>
                                     {reqServiced && <Check size={16} />}
-                                </div>
+                                </button>
                             </div>
                         </div>
                     )}
@@ -854,7 +872,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                 <PartyPopper size={20} className="text-secondary" />
                                 <span className="font-bold text-gray-900">Event Center Specs</span>
                             </div>
-                            
+
                             {/* Capacity Slider */}
                             <div className="mb-2">
                                 <div className="flex justify-between text-sm mb-3">
@@ -863,12 +881,13 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                         {minCapacity > 0 ? `${minCapacity}+ Guests` : 'Any Size'}
                                     </span>
                                 </div>
-                                <input 
-                                    type="range" 
-                                    min="0" 
-                                    max="5000" 
-                                    step="100" 
-                                    value={minCapacity} 
+                                <input
+                                    type="range"
+                                    aria-label="Minimum event guest capacity"
+                                    min="0"
+                                    max="5000"
+                                    step="100"
+                                    value={minCapacity}
                                     onChange={(e) => setMinCapacity(Number(e.target.value))}
                                     className="w-full accent-secondary h-4 bg-white rounded-lg appearance-none cursor-pointer border border-gray-200"
                                 />
@@ -883,7 +902,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                     {/* General Facilities */}
                     <div>
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 block">Facilities & Amenities</label>
-                        
+
                         {/* Parking Stepper */}
                         <div className="flex items-center justify-between mb-6 p-1">
                             <div className="flex items-center gap-3 text-gray-900">
@@ -893,23 +912,29 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                                 <span className="font-bold text-sm">Parking Spaces</span>
                             </div>
                             <div className="flex items-center gap-1 bg-white border border-gray-200 p-1.5 rounded-full shadow-sm">
-                                <button 
-                                    onClick={() => setMinParking(Math.max(0, minParking - 10))} 
+                                <button
+                                    type="button"
+                                    onClick={() => setMinParking(Math.max(0, minParking - 10))}
+                                    aria-label="Decrease minimum parking spaces"
                                     className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                 >-</button>
                                 <span className="w-12 text-center font-bold text-sm">{minParking}+</span>
-                                <button 
-                                    onClick={() => setMinParking(minParking + 10)} 
+                                <button
+                                    type="button"
+                                    onClick={() => setMinParking(minParking + 10)}
+                                    aria-label="Increase minimum parking spaces"
                                     className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-900 transition-colors font-bold"
                                 >+</button>
                             </div>
                         </div>
 
                         {/* Generator Toggle */}
-                        <div 
+                        <button
+                            type="button"
+                            aria-pressed={reqGenerator}
                             className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${
-                                reqGenerator 
-                                ? 'bg-primary-container border-primary-container shadow-md' 
+                                reqGenerator
+                                ? 'bg-primary-container border-primary-container shadow-md'
                                 : 'bg-white border-gray-200 hover:bg-gray-50 shadow-sm'
                             }`}
                             onClick={() => setReqGenerator(!reqGenerator)}
@@ -928,32 +953,34 @@ const ExploreView: React.FC<ExploreViewProps> = ({
                             }`}>
                                 {reqGenerator && <Check size={14} className="text-white" />}
                             </div>
-                        </div>
+                        </button>
                     </div>
                 </div>
 
                 <div className="mt-8 flex gap-3 pt-4 border-t border-gray-100">
-                    <button 
-                        onClick={resetFilters} 
+                    <button
+                        type="button"
+                        onClick={resetFilters}
                         className="flex-1 py-4 text-gray-600 font-bold hover:bg-gray-100 rounded-2xl transition-colors"
                     >
                         Reset
                     </button>
-                    <button 
-                        onClick={() => setIsFilterOpen(false)} 
+                    <button
+                        type="button"
+                        onClick={() => setIsFilterOpen(false)}
                         className="flex-[2] py-4 bg-primary text-white font-bold rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary/90 active:scale-95 transition-all"
                     >
-                        Show {filteredProperties.length} Results
+                        Show <span aria-live="polite">{filteredProperties.length} {filteredProperties.length === 1 ? 'result' : 'results'}</span>
                     </button>
                 </div>
-            </div>
+            </section>
         </div>
       )}
 
       {/* Compare Modal */}
       {showCompareModal && (
-          <CompareModal 
-              properties={compareList} 
+          <CompareModal
+              properties={compareList}
               onClose={() => setShowCompareModal(false)}
               onRemove={removeFromCompare}
               onChat={onChat}

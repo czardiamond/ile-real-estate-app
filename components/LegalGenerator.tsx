@@ -1,43 +1,52 @@
 import React, { useState } from 'react';
-import { Property, User } from '../types';
+import { Property } from '../types';
 import { generateTenancyAgreement } from '../services/geminiService';
-import { sendGmailEmail } from '../services/gmailService';
-import { FileText, Download, CheckCircle, Loader2, PenTool, Mail, Send, CheckCircle2 } from 'lucide-react';
+import { FileText, Download, X, Loader2, PenTool } from 'lucide-react';
 
 interface LegalGeneratorProps {
     property: Property;
-    user: User;
     onClose: () => void;
 }
 
-const LegalGenerator: React.FC<LegalGeneratorProps> = ({ property, user, onClose }) => {
+const LegalGenerator: React.FC<LegalGeneratorProps> = ({ property, onClose }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [agreementText, setAgreementText] = useState<string | null>(null);
-    const [tenantName, setTenantName] = useState(user.name);
-    const [landlordName, setLandlordName] = useState('Lekki Gardens Ltd'); // Mocked agent/landlord
-    const [isSendingGmail, setIsSendingGmail] = useState(false);
-    const [gmailSent, setGmailSent] = useState(false);
-
-    const handleSendGmail = async () => {
-        if (!agreementText) return;
-        setIsSendingGmail(true);
-        const subject = `[Ilé Legal Draft] Tenancy Agreement for ${property.title}`;
-        await sendGmailEmail({
-            to: user.email || 'tenant@ile.app',
-            subject,
-            bodyText: agreementText,
-            bodyHtml: `<div style="font-family: serif; white-space: pre-wrap;">${agreementText}</div>`
-        });
-        setIsSendingGmail(false);
-        setGmailSent(true);
-        setTimeout(() => setGmailSent(false), 4000);
-    };
+    const [tenantName, setTenantName] = useState('');
+    const [landlordName, setLandlordName] = useState('');
+    const [duration, setDuration] = useState('');
+    const [error, setError] = useState('');
+    const rentPeriod = property.period === 'per year' || property.period === 'per month' ? property.period : '';
 
     const handleGenerate = async () => {
+        if (!tenantName.trim() || !landlordName.trim() || !duration.trim() || !rentPeriod) {
+            setError('Provide both parties’ names and the agreed duration. Rental drafts are available only for listings with a monthly or yearly price.');
+            return;
+        }
         setIsLoading(true);
-        const text = await generateTenancyAgreement(tenantName, landlordName, `${property.location.address}, ${property.location.area}`, property.price);
-        setAgreementText(text);
-        setIsLoading(false);
+        setError('');
+        try {
+            const address = [property.location.address, property.location.area, property.location.state].filter(Boolean).join(', ');
+            const text = await generateTenancyAgreement(tenantName.trim(), landlordName.trim(), address, property.price, rentPeriod, duration.trim());
+            setAgreementText(text);
+        } catch {
+            setError('The AI service could not create this draft. Check server AI configuration and try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handlePrint = () => {
+        if (!agreementText) return;
+        const printWindow = window.open('', '_blank', 'width=900,height=700');
+        if (!printWindow) {
+            setError('The browser blocked the print window. Allow pop-ups for this site and try again.');
+            return;
+        }
+        const escapedText = agreementText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ilé AI Rental Draft</title><style>body{font:16px/1.6 Georgia,serif;max-width:800px;margin:40px auto;padding:0 24px;color:#222}pre{white-space:pre-wrap;font:inherit}h1{font:700 20px Arial,sans-serif;margin-bottom:24px}.notice{font:12px/1.5 Arial,sans-serif;border:1px solid #d9a441;padding:12px;margin-bottom:24px}@media print{body{margin:0 auto}}</style></head><body><h1>Ilé AI — Non-binding rental draft</h1><div class="notice">AI-generated starting point only. Not legal advice and not confirmed as compliant with current law. Have a qualified lawyer review it before use.</div><pre>${escapedText}</pre></body></html>`);
+        printWindow.document.close();
+        printWindow.focus();
+        window.setTimeout(() => printWindow.print(), 250);
     };
 
     return (
@@ -50,10 +59,10 @@ const LegalGenerator: React.FC<LegalGeneratorProps> = ({ property, user, onClose
                         <h2 className="text-xl font-bold flex items-center gap-2">
                             <FileText className="text-secondary" /> Ilé Legal Draftsman
                         </h2>
-                        <p className="text-gray-400 text-xs">AI-Powered Tenancy Agreement Generator</p>
+                        <p className="text-gray-400 text-xs">AI-assisted rental template — lawyer review required</p>
                     </div>
-                    <button onClick={onClose} className="bg-gray-800 p-2 rounded-full hover:bg-gray-700">
-                        <CheckCircle size={20} />
+                    <button onClick={onClose} aria-label="Close agreement draft" className="bg-gray-800 p-2 rounded-full hover:bg-gray-700">
+                        <X size={20} />
                     </button>
                 </div>
 
@@ -67,7 +76,7 @@ const LegalGenerator: React.FC<LegalGeneratorProps> = ({ property, user, onClose
                                 <div>
                                     <h4 className="font-bold text-amber-950 text-sm mb-1">Important Legal Disclaimer</h4>
                                     <p className="leading-relaxed">
-                                        Draft provided for guidance and informational purposes only. Ilé is a technology platform and does not provide formal legal advice. Always consult a qualified legal professional (registered with the Nigerian Bar Association) before signing or making any financial commitments.
+                                        AI-generated starting point only. Ilé does not provide legal advice and this draft is not confirmed as compliant with current law. Have a qualified legal practitioner review all terms before signing or making any payment.
                                     </p>
                                 </div>
                             </div>
@@ -76,16 +85,19 @@ const LegalGenerator: React.FC<LegalGeneratorProps> = ({ property, user, onClose
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 mb-1">Tenant Name (You)</label>
                                     <input 
-                                        type="text" 
+                                        type="text"
+                                        required
                                         value={tenantName} 
                                         onChange={(e) => setTenantName(e.target.value)}
                                         className="w-full p-3 border border-gray-300 rounded-lg"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1">Landlord / Agency</label>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">Landlord / Agency legal name</label>
                                     <input 
-                                        type="text" 
+                                        type="text"
+                                        required
+                                        placeholder="Enter the agreed legal name"
                                         value={landlordName} 
                                         onChange={(e) => setLandlordName(e.target.value)}
                                         className="w-full p-3 border border-gray-300 rounded-lg"
@@ -93,22 +105,28 @@ const LegalGenerator: React.FC<LegalGeneratorProps> = ({ property, user, onClose
                                 </div>
                             </div>
 
-                            <div className="bg-white p-4 rounded-xl border border-gray-200">
-                                <h4 className="font-bold text-gray-700 mb-2">Deal Terms</h4>
+                            <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-3">
+                                <h4 className="font-bold text-gray-700">Deal Terms</h4>
                                 <ul className="text-sm space-y-2 text-gray-600">
-                                    <li className="flex justify-between"><span>Property:</span> <span className="font-medium">{property.title}</span></li>
-                                    <li className="flex justify-between"><span>Rent:</span> <span className="font-medium">₦{property.price.toLocaleString()}</span></li>
-                                    <li className="flex justify-between"><span>Duration:</span> <span className="font-medium">1 Year (Standard)</span></li>
+                                    <li className="flex justify-between gap-3"><span>Property:</span> <span className="font-medium text-right">{property.title}</span></li>
+                                    <li className="flex justify-between gap-3"><span>Seller-listed rent:</span> <span className="font-medium text-right">₦{property.price.toLocaleString()} {rentPeriod || '(price period unavailable)'}</span></li>
+                                    <li className="flex justify-between gap-3"><span>Location supplied:</span> <span className="font-medium text-right">{[property.location.area, property.location.state].filter(Boolean).join(', ') || 'Not provided'}</span></li>
                                 </ul>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">Agreed duration</label>
+                                    <input type="text" required value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="For example, 12 months" className="w-full p-3 border border-gray-300 rounded-lg" />
+                                </div>
                             </div>
+                            {!rentPeriod && <div className="bg-gray-100 border border-gray-200 p-3 rounded-lg text-xs text-gray-700">A rental price period (per month or per year) is required. Outright sale listings do not support this rental draft.</div>}
+                            {error && <div role="alert" className="bg-red-50 border border-red-200 p-3 rounded-lg text-xs text-red-800">{error}</div>}
 
                             <button 
                                 onClick={handleGenerate}
-                                disabled={isLoading}
+                                disabled={isLoading || !rentPeriod || !tenantName.trim() || !landlordName.trim() || !duration.trim()}
                                 className="w-full bg-primary text-white py-4 rounded-xl font-bold hover:bg-primary/90 flex items-center justify-center gap-2 shadow-lg"
                             >
                                 {isLoading ? <Loader2 className="animate-spin" /> : <PenTool size={20} />}
-                                {isLoading ? 'Drafting Contract...' : 'Generate Agreement Now'}
+                                {isLoading ? 'Drafting template…' : 'Generate rental draft'}
                             </button>
                         </div>
                     ) : (
@@ -116,10 +134,10 @@ const LegalGenerator: React.FC<LegalGeneratorProps> = ({ property, user, onClose
                             {/* Persistent Legal Warning Header Banner */}
                             <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-xl text-xs text-amber-900 flex items-center justify-between">
                                 <span className="font-semibold">
-                                    ⚠️ <strong>Legal Disclaimer:</strong> Draft provided for guidance. Consult a legal professional before signing or making payments.
+                                    <strong>Legal disclaimer:</strong> AI starting point only — not legal advice and not confirmed as compliant with current law. Consult a qualified legal practitioner before using it.
                                 </span>
                                 <span className="text-[10px] bg-amber-200/60 text-amber-900 font-bold px-2 py-0.5 rounded">
-                                    Non-Binding AI Draft
+                                    Non-binding draft
                                 </span>
                             </div>
 
@@ -130,7 +148,7 @@ const LegalGenerator: React.FC<LegalGeneratorProps> = ({ property, user, onClose
                                     {/* Document Disclaimer Stamp */}
                                     <div className="mt-8 pt-6 border-t-2 border-dashed border-gray-300 text-[11px] text-gray-500 font-sans italic bg-gray-50 p-4 rounded-lg">
                                         <p className="font-bold text-gray-700 not-italic uppercase tracking-wider mb-1">Notice & Disclaimer</p>
-                                        This tenancy agreement template was generated by Ilé AI Assistant for guidance purposes only. Neither Ilé nor its affiliates provide legal advice or act as legal representatives. Users must independently verify all clauses and consult a certified legal practitioner before execution.
+                                        This rental template was generated with AI for review. Ilé and its affiliates do not provide legal advice or represent either party. Independently verify every detail and consult a qualified legal practitioner before use.
                                     </div>
                                 </div>
                             </div>
@@ -147,16 +165,11 @@ const LegalGenerator: React.FC<LegalGeneratorProps> = ({ property, user, onClose
                         >
                             Edit Details
                         </button>
-                        <button 
-                            onClick={handleSendGmail}
-                            disabled={isSendingGmail}
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors"
+                        <button
+                            onClick={handlePrint}
+                            className="flex-1 bg-secondary text-white py-3 rounded-lg font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
                         >
-                            {isSendingGmail ? <Loader2 size={16} className="animate-spin" /> : gmailSent ? <CheckCircle2 size={16} className="text-emerald-300" /> : <Mail size={16} />}
-                            {gmailSent ? 'Sent via Gmail!' : 'Send Draft via Gmail'}
-                        </button>
-                        <button className="flex-1 bg-secondary text-white py-3 rounded-lg font-bold text-xs flex items-center justify-center gap-2 shadow-sm">
-                            <Download size={16} /> Download PDF
+                            <Download size={16} /> Print / Save PDF
                         </button>
                     </div>
                 )}

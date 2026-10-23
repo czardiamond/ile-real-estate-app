@@ -1,8 +1,8 @@
 // src/components/AdminVerificationPanel.tsx
 import React, { useEffect, useState } from 'react';
-import { db } from '../services/firebaseConfig';
-import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
-import { verifyProperty, markUserAsVerifiedSeller } from '../services/propertyService';
+import { auth, db, storage } from '../lib/firebase';
+import { collection, onSnapshot, doc, deleteField, query, orderBy, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getBlob, ref as storageRef } from 'firebase/storage';
 import { useToast } from '../context/ToastContext';
 
 export interface VerificationRecord {
@@ -10,7 +10,8 @@ export interface VerificationRecord {
   userId: string;
   propertyId?: string;
   titleNumber: string;
-  documentUrl: string;
+  storagePath?: string;
+  documentUrl?: string;
   status: 'pending' | 'approved' | 'rejected';
   createdAt?: any;
 }
@@ -20,6 +21,7 @@ export const AdminVerificationPanel: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const toast = useToast();
 
   useEffect(() => {
@@ -64,17 +66,36 @@ export const AdminVerificationPanel: React.FC = () => {
     try {
       setProcessingId(verification.id);
 
-      const verRef = doc(db, 'verifications', verification.id);
-      await updateDoc(verRef, { status: newStatus });
+      const reviewerId = auth.currentUser?.uid;
+      if (!reviewerId) throw new Error('Sign in with an administrator account to review documents.');
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'verifications', verification.id), { status: newStatus });
+
+      if (verification.propertyId) {
+        const approved = newStatus === 'approved';
+        const reviewFields = {
+          isVerified: approved,
+          verificationStatus: approved ? 'Verified' : 'Rejected',
+          verificationLevel: approved ? 'DOCUMENT_REVIEWED' : 'NONE',
+          verifiedAt: approved ? serverTimestamp() : deleteField(),
+          verifiedBy: approved ? reviewerId : deleteField(),
+          ...(approved ? {} : { rejectionReason: 'The submitted title document was rejected during Ilé review.' }),
+          updatedAt: serverTimestamp(),
+        };
+        batch.update(doc(db, 'properties', verification.propertyId), reviewFields);
+        batch.update(doc(db, 'public_listings', verification.propertyId), {
+          isVerified: approved,
+          verificationStatus: approved ? 'Verified' : 'Rejected',
+          verificationLevel: approved ? 'DOCUMENT_REVIEWED' : 'NONE',
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
 
       if (newStatus === 'approved') {
-        if (verification.propertyId) {
-          await verifyProperty(verification.propertyId, true);
-        }
-        await markUserAsVerifiedSeller(verification.userId, true);
         toast.success(
-          'Title Approved',
-          `Title ${verification.titleNumber} approved. Property verified & seller marked as trusted.`
+          'Document marked reviewed',
+          'Ilé recorded an internal document review. This is not a government registry result, identity check, or legal opinion.'
         );
       } else {
         toast.info(
@@ -95,19 +116,46 @@ export const AdminVerificationPanel: React.FC = () => {
     }
   };
 
+  const handleViewDocument = async (verification: VerificationRecord) => {
+    if (!verification.storagePath) {
+      toast.error('Document path unavailable', 'This legacy record needs the approved Firestore privacy migration before its file can be opened.');
+      return;
+    }
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) {
+      toast.error('Popup blocked', 'Allow a new tab to open the private title document.');
+      return;
+    }
+    popup.opener = null;
+    setOpeningDocumentId(verification.id);
+
+    try {
+      const blob = await getBlob(storageRef(storage, verification.storagePath));
+      const objectUrl = URL.createObjectURL(blob);
+      popup.location.replace(objectUrl);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5 * 60 * 1000);
+    } catch (err: any) {
+      popup.close();
+      console.error('Failed to open private title document:', err);
+      toast.error('Unable to open document', err?.message || 'Check your sign-in and Storage permissions.');
+    } finally {
+      setOpeningDocumentId(null);
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 my-8">
       <div className="flex justify-between items-center mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-gray-900">Admin Title Verification Console</h2>
+            <h2 className="text-xl font-bold text-gray-900">Ilé Document Review Console</h2>
             <span className="flex h-2.5 w-2.5 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
             <span className="text-xs text-emerald-600 font-semibold tracking-wide uppercase">Live</span>
           </div>
-          <p className="text-xs text-gray-500">Real-time stream of incoming land title verification requests.</p>
+          <p className="text-xs text-gray-500">Private queue of files submitted for internal review. No government registry integration is connected.</p>
         </div>
       </div>
 
@@ -151,14 +199,14 @@ export const AdminVerificationPanel: React.FC = () => {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <a
-                      href={item.documentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-emerald-600 hover:underline font-medium text-xs inline-flex items-center gap-1"
+                    <button
+                      type="button"
+                      onClick={() => void handleViewDocument(item)}
+                      disabled={openingDocumentId === item.id || !item.storagePath}
+                      className="text-emerald-600 hover:underline font-medium text-xs inline-flex items-center gap-1 disabled:opacity-50"
                     >
-                      📄 View Title File
-                    </a>
+                      {openingDocumentId === item.id ? 'Opening…' : item.storagePath ? '📄 View Title File' : 'Path migration needed'}
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     <span

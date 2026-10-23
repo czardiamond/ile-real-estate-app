@@ -1,0 +1,23 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "public_listings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "publicProjectionVersion", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chat_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "chatType", "order": "ASCENDING" },
+        { "fieldPath": "propertyId", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
